@@ -1,0 +1,2164 @@
+--========================================================--
+--                    KYZEN PERKS                         --
+--              PRIVATE TEST SYSTEM V2.1                 --
+--                    GUI EDITION                         --
+--========================================================--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+--========================================================--
+-- SYSTEM SETTINGS
+--========================================================--
+
+local Settings = {
+	Enabled = true,
+	TargetLock = true,
+
+	TargetMode = "SMART",
+
+	MaxTargetDistance = 100,
+
+	CameraFollow = true,
+
+	CameraSpeed = 18,
+	CameraSmoothness = 0.82,
+
+	SwitchRatio = 0.78,
+	SwitchDelay = 0.18,
+
+	ShowTargetIndicator = true,
+
+	ShowFOV = true,
+	FOVRadius = 145,
+}
+
+--========================================================--
+-- COLORS
+--========================================================--
+
+local COLORS = {
+	Black = Color3.fromRGB(6, 7, 10),
+	Black2 = Color3.fromRGB(10, 11, 15),
+
+	Panel = Color3.fromRGB(15, 17, 23),
+	Panel2 = Color3.fromRGB(20, 22, 29),
+
+	Blue = Color3.fromRGB(45, 135, 255),
+	BlueBright = Color3.fromRGB(85, 175, 255),
+	BlueDark = Color3.fromRGB(24, 68, 125),
+
+	Red = Color3.fromRGB(255, 55, 68),
+	RedDark = Color3.fromRGB(125, 25, 35),
+
+	White = Color3.fromRGB(245, 247, 252),
+	Grey = Color3.fromRGB(155, 160, 172),
+	Grey2 = Color3.fromRGB(100, 105, 118),
+
+	Border = Color3.fromRGB(46, 50, 62),
+	BorderBlue = Color3.fromRGB(48, 105, 180),
+}
+
+--========================================================--
+-- STATE
+--========================================================--
+
+local CurrentTarget = nil
+local TargetSwitchStarted = 0
+local LastCameraCFrame = nil
+
+local Connections = {}
+local GuiConnections = {}
+
+--========================================================--
+-- HELPERS
+--========================================================--
+
+local function Tween(object, properties, duration, style, direction)
+	local info = TweenInfo.new(
+		duration or 0.2,
+		style or Enum.EasingStyle.Quart,
+		direction or Enum.EasingDirection.Out
+	)
+
+	local tween = TweenService:Create(object, info, properties)
+	tween:Play()
+
+	return tween
+end
+
+local function AddCorner(object, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 10)
+	corner.Parent = object
+	return corner
+end
+
+local function AddStroke(object, color, thickness, transparency)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color or COLORS.Border
+	stroke.Thickness = thickness or 1
+	stroke.Transparency = transparency or 0
+	stroke.Parent = object
+	return stroke
+end
+
+--========================================================--
+-- SCREEN GUI
+--========================================================--
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PrivateTestSystem"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+--========================================================--
+-- LOADING GUI
+--========================================================--
+
+local Loading = Instance.new("Frame")
+Loading.Name = "Loading"
+Loading.AnchorPoint = Vector2.new(0.5, 0.5)
+Loading.Position = UDim2.fromScale(0.5, 0.5)
+Loading.Size = UDim2.fromOffset(300, 145)
+Loading.BackgroundColor3 = COLORS.Black
+Loading.BorderSizePixel = 0
+Loading.Parent = ScreenGui
+
+AddCorner(Loading, 16)
+AddStroke(Loading, COLORS.BorderBlue, 1.5, 0.1)
+
+local LoadingGradient = Instance.new("UIGradient")
+LoadingGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 35, 60)),
+	ColorSequenceKeypoint.new(0.55, COLORS.Black),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 10, 17)),
+})
+LoadingGradient.Rotation = 25
+LoadingGradient.Parent = Loading
+
+local LoadingTitle = Instance.new("TextLabel")
+LoadingTitle.BackgroundTransparency = 1
+LoadingTitle.Position = UDim2.fromOffset(20, 18)
+LoadingTitle.Size = UDim2.new(1, -40, 0, 27)
+LoadingTitle.Font = Enum.Font.GothamBold
+LoadingTitle.Text = "KYZEN PERKS"
+LoadingTitle.TextColor3 = COLORS.White
+LoadingTitle.TextSize = 18
+LoadingTitle.Parent = Loading
+
+local LoadingVersion = Instance.new("TextLabel")
+LoadingVersion.BackgroundTransparency = 1
+LoadingVersion.Position = UDim2.fromOffset(20, 45)
+LoadingVersion.Size = UDim2.new(1, -40, 0, 18)
+LoadingVersion.Font = Enum.Font.GothamMedium
+LoadingVersion.Text = "PRIVATE TEST  •  V1, 2.1"
+LoadingVersion.TextColor3 = COLORS.Grey
+LoadingVersion.TextSize = 9
+LoadingVersion.Parent = Loading
+
+local LoadingStatus = Instance.new("TextLabel")
+LoadingStatus.BackgroundTransparency = 1
+LoadingStatus.Position = UDim2.fromOffset(20, 73)
+LoadingStatus.Size = UDim2.new(1, -40, 0, 18)
+LoadingStatus.Font = Enum.Font.GothamMedium
+LoadingStatus.Text = "Initializing interface..."
+LoadingStatus.TextColor3 = COLORS.BlueBright
+LoadingStatus.TextSize = 10
+LoadingStatus.Parent = Loading
+
+local LoadingBarBack = Instance.new("Frame")
+LoadingBarBack.Position = UDim2.new(0, 20, 1, -30)
+LoadingBarBack.Size = UDim2.new(1, -40, 0, 5)
+LoadingBarBack.BackgroundColor3 = Color3.fromRGB(27, 29, 37)
+LoadingBarBack.BorderSizePixel = 0
+LoadingBarBack.Parent = Loading
+
+AddCorner(LoadingBarBack, 10)
+
+local LoadingBar = Instance.new("Frame")
+LoadingBar.Size = UDim2.new(0, 0, 1, 0)
+LoadingBar.BackgroundColor3 = COLORS.Blue
+LoadingBar.BorderSizePixel = 0
+LoadingBar.Parent = Loading
+
+AddCorner(LoadingBar, 10)
+
+local LoadingGradient2 = Instance.new("UIGradient")
+LoadingGradient2.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, COLORS.Blue),
+	ColorSequenceKeypoint.new(0.65, COLORS.BlueBright),
+	ColorSequenceKeypoint.new(1, COLORS.Red),
+})
+LoadingGradient2.Parent = LoadingBar
+
+--========================================================--
+-- MAIN GUI
+--========================================================--
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
+Main.Position = UDim2.fromScale(0.5, 0.5)
+Main.Size = UDim2.fromOffset(650, 410)
+Main.BackgroundColor3 = COLORS.Black
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.Parent = ScreenGui
+
+AddCorner(Main, 18)
+AddStroke(Main, COLORS.BorderBlue, 1.5, 0.05)
+
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 23, 34)),
+	ColorSequenceKeypoint.new(0.55, COLORS.Black),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(34, 9, 15)),
+})
+MainGradient.Rotation = 20
+MainGradient.Parent = Main
+
+--========================================================--
+-- RESPONSIVE SCALE
+--========================================================--
+
+local UIScale = Instance.new("UIScale")
+UIScale.Parent = Main
+
+local function UpdateScale()
+
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	local viewport = camera.ViewportSize
+	local smallest = math.min(viewport.X, viewport.Y)
+
+	local scale
+
+	if smallest < 500 then
+		scale = math.clamp(smallest / 510, 0.70, 0.88)
+	else
+		scale = math.clamp(smallest / 700, 0.88, 1.08)
+	end
+
+	UIScale.Scale = scale
+end
+
+task.defer(UpdateScale)
+
+--========================================================--
+-- HEADER
+--========================================================--
+
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Position = UDim2.fromOffset(14, 12)
+Header.Size = UDim2.new(1, -28, 0, 58)
+Header.BackgroundColor3 = COLORS.Panel
+Header.BorderSizePixel = 0
+Header.Parent = Main
+
+AddCorner(Header, 13)
+AddStroke(Header, COLORS.Border, 1)
+
+local HeaderAccent = Instance.new("Frame")
+HeaderAccent.Position = UDim2.fromOffset(12, 12)
+HeaderAccent.Size = UDim2.fromOffset(3, 34)
+HeaderAccent.BackgroundColor3 = COLORS.Blue
+HeaderAccent.BorderSizePixel = 0
+HeaderAccent.Parent = Header
+
+AddCorner(HeaderAccent, 5)
+
+local HeaderTitle = Instance.new("TextLabel")
+HeaderTitle.BackgroundTransparency = 1
+HeaderTitle.Position = UDim2.fromOffset(25, 7)
+HeaderTitle.Size = UDim2.new(1, -160, 0, 26)
+HeaderTitle.Font = Enum.Font.GothamBold
+HeaderTitle.Text = "KYZEN PERKS"
+HeaderTitle.TextColor3 = COLORS.White
+HeaderTitle.TextSize = 18
+HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
+HeaderTitle.Parent = Header
+
+local HeaderSub = Instance.new("TextLabel")
+HeaderSub.BackgroundTransparency = 1
+HeaderSub.Position = UDim2.fromOffset(26, 33)
+HeaderSub.Size = UDim2.new(1, -160, 0, 15)
+HeaderSub.Font = Enum.Font.GothamMedium
+HeaderSub.Text = "PRIVATE DEVELOPER TEST SYSTEM"
+HeaderSub.TextColor3 = COLORS.Grey
+HeaderSub.TextSize = 8
+HeaderSub.TextXAlignment = Enum.TextXAlignment.Left
+HeaderSub.Parent = Header
+
+local Version = Instance.new("TextLabel")
+Version.BackgroundTransparency = 1
+Version.Position = UDim2.new(1, -115, 0, 13)
+Version.Size = UDim2.fromOffset(65, 30)
+Version.Font = Enum.Font.GothamBold
+Version.Text = "V1, 2.1"
+Version.TextColor3 = COLORS.BlueBright
+Version.TextSize = 10
+Version.Parent = Header
+
+local Close = Instance.new("TextButton")
+Close.Name = "Close"
+Close.BackgroundTransparency = 1
+Close.Position = UDim2.new(1, -43, 0, 10)
+Close.Size = UDim2.fromOffset(32, 38)
+Close.Font = Enum.Font.GothamMedium
+Close.Text = "×"
+Close.TextColor3 = COLORS.Grey
+Close.TextSize = 25
+Close.AutoButtonColor = false
+Close.Parent = Header
+
+--========================================================--
+-- MAIN DRAGGING
+--========================================================--
+
+local dragging = false
+local dragStart
+local startPosition
+
+table.insert(GuiConnections, Header.InputBegan:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = true
+		dragStart = input.Position
+		startPosition = Main.Position
+
+	end
+end))
+
+table.insert(GuiConnections, UserInputService.InputChanged:Connect(function(input)
+
+	if not dragging then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		local delta = input.Position - dragStart
+
+		Main.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+
+	end
+end))
+
+table.insert(GuiConnections, UserInputService.InputEnded:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = false
+
+	end
+end))
+
+--========================================================--
+-- LEFT TABS
+--========================================================--
+
+local TabsFrame = Instance.new("Frame")
+TabsFrame.Name = "Tabs"
+TabsFrame.Position = UDim2.fromOffset(14, 80)
+TabsFrame.Size = UDim2.new(0, 180, 1, -94)
+TabsFrame.BackgroundColor3 = COLORS.Panel
+TabsFrame.BorderSizePixel = 0
+TabsFrame.Parent = Main
+
+AddCorner(TabsFrame, 14)
+AddStroke(TabsFrame, COLORS.Border, 1)
+
+local TabsTitle = Instance.new("TextLabel")
+TabsTitle.BackgroundTransparency = 1
+TabsTitle.Position = UDim2.fromOffset(15, 15)
+TabsTitle.Size = UDim2.new(1, -30, 0, 18)
+TabsTitle.Font = Enum.Font.GothamBold
+TabsTitle.Text = "CONTROL CENTER"
+TabsTitle.TextColor3 = COLORS.Grey
+TabsTitle.TextSize = 8
+TabsTitle.TextXAlignment = Enum.TextXAlignment.Left
+TabsTitle.Parent = TabsFrame
+
+local TabButtons = {}
+
+local function CreateTabButton(name, text, y)
+
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Position = UDim2.fromOffset(10, y)
+	button.Size = UDim2.new(1, -20, 0, 54)
+	button.BackgroundColor3 = COLORS.Panel
+	button.BorderSizePixel = 0
+	button.Text = ""
+	button.AutoButtonColor = false
+	button.Parent = TabsFrame
+
+	AddCorner(button, 10)
+	AddStroke(button, COLORS.Border, 1)
+
+	local accent = Instance.new("Frame")
+	accent.Name = "Accent"
+	accent.Position = UDim2.fromOffset(0, 10)
+	accent.Size = UDim2.fromOffset(3, 34)
+	accent.BackgroundColor3 = COLORS.Blue
+	accent.BorderSizePixel = 0
+	accent.Visible = false
+	accent.Parent = button
+
+	AddCorner(accent, 4)
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromOffset(14, 0)
+	label.Size = UDim2.new(1, -20, 1, 0)
+	label.Font = Enum.Font.GothamBold
+	label.Text = text
+	label.TextColor3 = COLORS.Grey
+	label.TextSize = 10
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = button
+
+	TabButtons[name] = {
+		Button = button,
+		Label = label,
+		Accent = accent
+	}
+
+	return button
+end
+
+local AimTab = CreateTabButton(
+	"AimTarget",
+	"AIM & TARGET",
+	43
+)
+
+local SettingsTab = CreateTabButton(
+	"Settings",
+	"SETTINGS",
+	103
+)
+
+local InfoTab = CreateTabButton(
+	"InfoCredit",
+	"INFO & CREDIT",
+	163
+)
+
+--========================================================--
+-- CONTENT CONTAINER
+--========================================================--
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "Content"
+ContentFrame.Position = UDim2.fromOffset(205, 80)
+ContentFrame.Size = UDim2.new(1, -219, 1, -94)
+ContentFrame.BackgroundColor3 = COLORS.Panel
+ContentFrame.BorderSizePixel = 0
+ContentFrame.ClipsDescendants = true
+ContentFrame.Parent = Main
+
+AddCorner(ContentFrame, 14)
+AddStroke(ContentFrame, COLORS.Border, 1)
+
+--========================================================--
+-- SCROLLING PAGES
+--========================================================--
+
+local Pages = {}
+
+local function CreatePage(name)
+
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = name
+	scroll.Size = UDim2.new(1, 0, 1, 0)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 3
+	scroll.ScrollBarImageColor3 = COLORS.Blue
+	scroll.ScrollBarImageTransparency = 0.35
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	scroll.Visible = false
+	scroll.Parent = ContentFrame
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 2)
+	padding.PaddingBottom = UDim.new(0, 12)
+	padding.Parent = scroll
+
+	Pages[name] = scroll
+
+	return scroll
+end
+
+local AimPage = CreatePage("AimTargetPage")
+local SettingsPage = CreatePage("SettingsPage")
+local InfoPage = CreatePage("InfoCreditPage")
+
+--========================================================--
+-- PAGE TITLES
+--========================================================--
+
+local function CreatePageTitle(parent, title, subtitle)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Position = UDim2.fromOffset(18, 15)
+	titleLabel.Size = UDim2.new(1, -36, 0, 25)
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.Text = title
+	titleLabel.TextColor3 = COLORS.White
+	titleLabel.TextSize = 16
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Parent = parent
+
+	local subLabel = Instance.new("TextLabel")
+	subLabel.BackgroundTransparency = 1
+	subLabel.Position = UDim2.fromOffset(19, 39)
+	subLabel.Size = UDim2.new(1, -38, 0, 18)
+	subLabel.Font = Enum.Font.Gotham
+	subLabel.Text = subtitle
+	subLabel.TextColor3 = COLORS.Grey
+	subLabel.TextSize = 9
+	subLabel.TextXAlignment = Enum.TextXAlignment.Left
+	subLabel.Parent = parent
+end
+
+CreatePageTitle(
+	AimPage,
+	"AIM & TARGET",
+	"Control targeting and camera behavior"
+)
+
+CreatePageTitle(
+	SettingsPage,
+	"SETTINGS",
+	"Adjust detection and target parameters"
+)
+
+CreatePageTitle(
+	InfoPage,
+	"INFO & CREDIT",
+	"Developer information and game details"
+)
+
+--========================================================--
+-- OPTION ROW
+--========================================================--
+
+local function CreateOptionRow(parent, y, title, description, height)
+
+	local row = Instance.new("Frame")
+	row.Position = UDim2.fromOffset(14, y)
+	row.Size = UDim2.new(1, -28, 0, height or 58)
+	row.BackgroundColor3 = COLORS.Panel2
+	row.BorderSizePixel = 0
+	row.Parent = parent
+
+	AddCorner(row, 11)
+	AddStroke(row, COLORS.Border, 1)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Position = UDim2.fromOffset(13, 8)
+	titleLabel.Size = UDim2.new(1, -145, 0, 20)
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.Text = title
+	titleLabel.TextColor3 = COLORS.White
+	titleLabel.TextSize = 10
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Parent = row
+
+	local descLabel = Instance.new("TextLabel")
+	descLabel.BackgroundTransparency = 1
+	descLabel.Position = UDim2.fromOffset(13, 29)
+	descLabel.Size = UDim2.new(1, -145, 0, 18)
+	descLabel.Font = Enum.Font.Gotham
+	descLabel.Text = description
+	descLabel.TextColor3 = COLORS.Grey2
+	descLabel.TextSize = 8
+	descLabel.TextXAlignment = Enum.TextXAlignment.Left
+	descLabel.Parent = row
+
+	return row
+end
+
+--========================================================--
+-- CIRCLE TOGGLE
+--========================================================--
+
+local function CreateCircleToggle(parent, y, title, description, default, callback)
+
+	local row = CreateOptionRow(
+		parent,
+		y,
+		title,
+		description
+	)
+
+	-- Circular toggle
+	local button = Instance.new("TextButton")
+	button.Name = "CircleToggle"
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -14, 0.5, 0)
+	button.Size = UDim2.fromOffset(32, 32)
+	button.BackgroundColor3 = Color3.fromRGB(27, 29, 37)
+	button.BorderSizePixel = 0
+	button.Text = ""
+	button.AutoButtonColor = false
+	button.Parent = row
+
+	AddCorner(button, 100)
+	AddStroke(button, COLORS.Border, 1)
+
+	local inner = Instance.new("Frame")
+	inner.Name = "Circle"
+	inner.AnchorPoint = Vector2.new(0.5, 0.5)
+	inner.Position = UDim2.fromScale(0.5, 0.5)
+	inner.Size = UDim2.fromOffset(16, 16)
+	inner.BackgroundColor3 = COLORS.Grey2
+	inner.BorderSizePixel = 0
+	inner.Parent = button
+
+	AddCorner(inner, 100)
+
+	local state = default
+
+	local function Refresh(animated)
+
+		if state then
+
+			if animated then
+
+				Tween(
+					button,
+					{
+						BackgroundColor3 = Color3.fromRGB(24, 63, 108)
+					},
+					0.16
+				)
+
+				Tween(
+					inner,
+					{
+						Size = UDim2.fromOffset(20, 20),
+						BackgroundColor3 = COLORS.BlueBright
+					},
+					0.16,
+					Enum.EasingStyle.Back
+				)
+
+			else
+
+				button.BackgroundColor3 =
+					Color3.fromRGB(24, 63, 108)
+
+				inner.Size =
+					UDim2.fromOffset(20, 20)
+
+				inner.BackgroundColor3 =
+					COLORS.BlueBright
+
+			end
+
+		else
+
+			if animated then
+
+				Tween(
+					button,
+					{
+						BackgroundColor3 =
+							Color3.fromRGB(27, 29, 37)
+					},
+					0.16
+				)
+
+				Tween(
+					inner,
+					{
+						Size = UDim2.fromOffset(16, 16),
+						BackgroundColor3 = COLORS.Grey2
+					},
+					0.16
+				)
+
+			else
+
+				button.BackgroundColor3 =
+					Color3.fromRGB(27, 29, 37)
+
+				inner.Size =
+					UDim2.fromOffset(16, 16)
+
+				inner.BackgroundColor3 =
+					COLORS.Grey2
+
+			end
+		end
+	end
+
+	Refresh(false)
+
+	table.insert(
+		GuiConnections,
+		button.MouseButton1Click:Connect(function()
+
+			state = not state
+
+			Refresh(true)
+
+			callback(state)
+
+		end)
+	)
+
+	return {
+		Set = function(value)
+
+			state = value
+
+			Refresh(true)
+
+			callback(state)
+
+		end,
+
+		Get = function()
+			return state
+		end
+	}
+end
+
+--========================================================--
+-- NUMBER CONTROL
+--========================================================--
+
+local function CreateNumberControl(
+	parent,
+	y,
+	title,
+	description,
+	getValue,
+	setValue,
+	minimum,
+	maximum,
+	step,
+	displayFunction,
+	valueColor
+)
+
+	local row = CreateOptionRow(
+		parent,
+		y,
+		title,
+		description
+	)
+
+	local minus = Instance.new("TextButton")
+	minus.Name = "Minus"
+	minus.AnchorPoint = Vector2.new(1, 0.5)
+	minus.Position = UDim2.new(1, -76, 0.5, 0)
+	minus.Size = UDim2.fromOffset(28, 28)
+	minus.BackgroundColor3 = Color3.fromRGB(27, 29, 37)
+	minus.BorderSizePixel = 0
+	minus.Text = "−"
+	minus.Font = Enum.Font.GothamBold
+	minus.TextColor3 = COLORS.White
+	minus.TextSize = 15
+	minus.AutoButtonColor = false
+	minus.Parent = row
+
+	AddCorner(minus, 8)
+	AddStroke(minus, COLORS.Border, 1)
+
+	local value = Instance.new("TextLabel")
+	value.Name = "Value"
+	value.AnchorPoint = Vector2.new(0.5, 0.5)
+	value.Position = UDim2.new(1, -53, 0.5, 0)
+	value.Size = UDim2.fromOffset(40, 32)
+	value.BackgroundTransparency = 1
+	value.Font = Enum.Font.GothamBold
+	value.TextColor3 = valueColor or COLORS.BlueBright
+	value.TextSize = 10
+	value.Parent = row
+
+	local plus = minus:Clone()
+	plus.Name = "Plus"
+	plus.Position = UDim2.new(1, -14, 0.5, 0)
+	plus.Text = "+"
+	plus.Parent = row
+
+	local function Refresh()
+
+		local current = getValue()
+
+		value.Text = displayFunction(current)
+
+	end
+
+	Refresh()
+
+	table.insert(
+		GuiConnections,
+		minus.MouseButton1Click:Connect(function()
+
+			local current = getValue()
+
+			local newValue = math.clamp(
+				current - step,
+				minimum,
+				maximum
+			)
+
+			setValue(newValue)
+
+			Refresh()
+
+		end)
+	)
+
+	table.insert(
+		GuiConnections,
+		plus.MouseButton1Click:Connect(function()
+
+			local current = getValue()
+
+			local newValue = math.clamp(
+				current + step,
+				minimum,
+				maximum
+			)
+
+			setValue(newValue)
+
+			Refresh()
+
+		end)
+	)
+
+	return {
+		Refresh = Refresh
+	}
+end
+
+--========================================================--
+-- AIM & TARGET PAGE
+--========================================================--
+
+CreateCircleToggle(
+	AimPage,
+	72,
+	"AIM ASSIST",
+	"Enable automatic target camera assistance",
+	Settings.Enabled,
+	function(value)
+
+		Settings.Enabled = value
+
+		if not value then
+			CurrentTarget = nil
+		end
+
+	end
+)
+
+CreateCircleToggle(
+	AimPage,
+	138,
+	"TARGET LOCK",
+	"Automatically acquire and follow nearby targets",
+	Settings.TargetLock,
+	function(value)
+
+		Settings.TargetLock = value
+
+		if not value then
+			CurrentTarget = nil
+		end
+
+	end
+)
+
+CreateCircleToggle(
+	AimPage,
+	204,
+	"CAMERA FOLLOW",
+	"Smoothly rotate camera toward selected target",
+	Settings.CameraFollow,
+	function(value)
+
+		Settings.CameraFollow = value
+
+	end
+)
+
+CreateNumberControl(
+	AimPage,
+	270,
+	"AIM SMOOTHNESS",
+	"Adjust final camera tracking smoothness",
+	function()
+		return Settings.CameraSmoothness
+	end,
+	function(value)
+		Settings.CameraSmoothness = value
+	end,
+	0.25,
+	1,
+	0.05,
+	function(value)
+		return math.floor(value * 100) .. "%"
+	end,
+	COLORS.BlueBright
+)
+
+--========================================================--
+-- SETTINGS PAGE
+--========================================================--
+
+-- FOV TOGGLE
+CreateCircleToggle(
+	SettingsPage,
+	72,
+	"FOV DETECTION",
+	"Visual FOV guide • targeting remains 360°",
+	Settings.ShowFOV,
+	function(value)
+
+		Settings.ShowFOV = value
+
+		FOVCircle.Visible = value
+
+	end
+)
+
+-- FOV RADIUS
+CreateNumberControl(
+	SettingsPage,
+	138,
+	"FOV SIZE",
+	"Adjust the visible FOV circle size",
+	function()
+		return Settings.FOVRadius
+	end,
+	function(value)
+
+		Settings.FOVRadius = value
+
+		FOVCircle.Size = UDim2.fromOffset(
+			value * 2,
+			value * 2
+		)
+
+	end,
+	60,
+	300,
+	10,
+	function(value)
+		return tostring(value)
+	end,
+	COLORS.BlueBright
+)
+
+-- TARGET MODE
+local ModeRow = CreateOptionRow(
+	SettingsPage,
+	204,
+	"TARGET MODE",
+	"Choose how targets are selected"
+)
+
+local ModeButton = Instance.new("TextButton")
+ModeButton.AnchorPoint = Vector2.new(1, 0.5)
+ModeButton.Position = UDim2.new(1, -14, 0.5, 0)
+ModeButton.Size = UDim2.fromOffset(105, 30)
+ModeButton.BackgroundColor3 = Color3.fromRGB(24, 47, 75)
+ModeButton.BorderSizePixel = 0
+ModeButton.Text = Settings.TargetMode
+ModeButton.Font = Enum.Font.GothamBold
+ModeButton.TextColor3 = COLORS.BlueBright
+ModeButton.TextSize = 9
+ModeButton.AutoButtonColor = false
+ModeButton.Parent = ModeRow
+
+AddCorner(ModeButton, 9)
+AddStroke(ModeButton, COLORS.BorderBlue, 1)
+
+local Modes = {
+	"SMART",
+	"NEAREST",
+	"LOCK",
+}
+
+local ModeIndex = 1
+
+table.insert(
+	GuiConnections,
+	ModeButton.MouseButton1Click:Connect(function()
+
+		ModeIndex += 1
+
+		if ModeIndex > #Modes then
+			ModeIndex = 1
+		end
+
+		Settings.TargetMode = Modes[ModeIndex]
+
+		ModeButton.Text = Settings.TargetMode
+
+		CurrentTarget = nil
+
+	end)
+)
+
+-- TARGET RANGE
+CreateNumberControl(
+	SettingsPage,
+	270,
+	"TARGET RANGE",
+	"Maximum automatic target distance",
+	function()
+		return Settings.MaxTargetDistance
+	end,
+	function(value)
+		Settings.MaxTargetDistance = value
+	end,
+	20,
+	300,
+	10,
+	function(value)
+		return tostring(value)
+	end,
+	COLORS.BlueBright
+)
+
+--========================================================--
+-- INFO & CREDIT
+--========================================================--
+
+local CreditBox = Instance.new("Frame")
+CreditBox.Position = UDim2.fromOffset(14, 72)
+CreditBox.Size = UDim2.new(1, -28, 0, 112)
+CreditBox.BackgroundColor3 = COLORS.Panel2
+CreditBox.BorderSizePixel = 0
+CreditBox.Parent = InfoPage
+
+AddCorner(CreditBox, 12)
+AddStroke(CreditBox, COLORS.Border, 1)
+
+local CreditTitle = Instance.new("TextLabel")
+CreditTitle.BackgroundTransparency = 1
+CreditTitle.Position = UDim2.fromOffset(15, 13)
+CreditTitle.Size = UDim2.new(1, -30, 0, 23)
+CreditTitle.Font = Enum.Font.GothamBold
+CreditTitle.Text = "CREDITS"
+CreditTitle.TextColor3 = COLORS.White
+CreditTitle.TextSize = 12
+CreditTitle.TextXAlignment = Enum.TextXAlignment.Left
+CreditTitle.Parent = CreditBox
+
+local CreditName = Instance.new("TextLabel")
+CreditName.BackgroundTransparency = 1
+CreditName.Position = UDim2.fromOffset(15, 39)
+CreditName.Size = UDim2.new(1, -30, 0, 22)
+CreditName.Font = Enum.Font.GothamBold
+CreditName.Text = "KyzenDevs"
+CreditName.TextColor3 = COLORS.BlueBright
+CreditName.TextSize = 15
+CreditName.TextXAlignment = Enum.TextXAlignment.Left
+CreditName.Parent = CreditBox
+
+local CreditRole = Instance.new("TextLabel")
+CreditRole.BackgroundTransparency = 1
+CreditRole.Position = UDim2.fromOffset(15, 64)
+CreditRole.Size = UDim2.new(1, -30, 0, 18)
+CreditRole.Font = Enum.Font.GothamMedium
+CreditRole.Text = "PROGRAMMER  •  UI CREATOR"
+CreditRole.TextColor3 = COLORS.Grey
+CreditRole.TextSize = 8
+CreditRole.TextXAlignment = Enum.TextXAlignment.Left
+CreditRole.Parent = CreditBox
+
+--========================================================--
+-- GAME INFO
+--========================================================--
+
+local GameInfoBox = Instance.new("Frame")
+GameInfoBox.Position = UDim2.fromOffset(14, 195)
+GameInfoBox.Size = UDim2.new(1, -28, 0, 140)
+GameInfoBox.BackgroundColor3 = COLORS.Panel2
+GameInfoBox.BorderSizePixel = 0
+GameInfoBox.Parent = InfoPage
+
+AddCorner(GameInfoBox, 12)
+AddStroke(GameInfoBox, COLORS.Border, 1)
+
+local GameInfoTitle = Instance.new("TextLabel")
+GameInfoTitle.BackgroundTransparency = 1
+GameInfoTitle.Position = UDim2.fromOffset(15, 12)
+GameInfoTitle.Size = UDim2.new(1, -30, 0, 22)
+GameInfoTitle.Font = Enum.Font.GothamBold
+GameInfoTitle.Text = "GAME INFO"
+GameInfoTitle.TextColor3 = COLORS.White
+GameInfoTitle.TextSize = 11
+GameInfoTitle.TextXAlignment = Enum.TextXAlignment.Left
+GameInfoTitle.Parent = GameInfoBox
+
+--========================================================--
+-- GAME INFO BLANK
+-- PALITAN ANG TEXT SA PROPERTY NA ITO
+--========================================================--
+
+local GameInfoText = Instance.new("TextLabel")
+GameInfoText.Name = "GameInfoBlank"
+GameInfoText.BackgroundTransparency = 1
+GameInfoText.Position = UDim2.fromOffset(15, 40)
+GameInfoText.Size = UDim2.new(1, -30, 1, -50)
+GameInfoText.Font = Enum.Font.Gotham
+GameInfoText.Text = ""
+GameInfoText.TextColor3 = COLORS.Grey
+GameInfoText.TextSize = 9
+GameInfoText.TextWrapped = true
+GameInfoText.TextXAlignment = Enum.TextXAlignment.Left
+GameInfoText.TextYAlignment = Enum.TextYAlignment.Top
+GameInfoText.Parent = GameInfoBox
+
+--========================================================--
+-- TAB SWITCHING
+--========================================================--
+
+local CurrentPage = nil
+
+local function SetTab(tabName)
+
+	for name, data in pairs(TabButtons) do
+
+		local selected = name == tabName
+
+		if selected then
+
+			Tween(
+				data.Button,
+				{
+					BackgroundColor3 =
+						Color3.fromRGB(22, 38, 60)
+				},
+				0.18
+			)
+
+			Tween(
+				data.Label,
+				{
+					TextColor3 = COLORS.White
+				},
+				0.18
+			)
+
+			data.Accent.Visible = true
+
+		else
+
+			Tween(
+				data.Button,
+				{
+					BackgroundColor3 = COLORS.Panel
+				},
+				0.18
+			)
+
+			Tween(
+				data.Label,
+				{
+					TextColor3 = COLORS.Grey
+				},
+				0.18
+			)
+
+			data.Accent.Visible = false
+
+		end
+	end
+
+	local pageName
+
+	if tabName == "AimTarget" then
+		pageName = "AimTargetPage"
+	elseif tabName == "Settings" then
+		pageName = "SettingsPage"
+	else
+		pageName = "InfoCreditPage"
+	end
+
+	local page = Pages[pageName]
+
+	if CurrentPage == page then
+		return
+	end
+
+	if CurrentPage then
+		CurrentPage.Visible = false
+	end
+
+	page.Visible = true
+	page.CanvasPosition = Vector2.new(0, 0)
+
+	CurrentPage = page
+
+end
+
+table.insert(
+	GuiConnections,
+	AimTab.MouseButton1Click:Connect(function()
+		SetTab("AimTarget")
+	end)
+)
+
+table.insert(
+	GuiConnections,
+	SettingsTab.MouseButton1Click:Connect(function()
+		SetTab("Settings")
+	end)
+)
+
+table.insert(
+	GuiConnections,
+	InfoTab.MouseButton1Click:Connect(function()
+		SetTab("InfoCredit")
+	end)
+)
+
+--========================================================--
+-- FOV CIRCLE
+--========================================================--
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "VisualFOV"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircle.Size = UDim2.fromOffset(
+	Settings.FOVRadius * 2,
+	Settings.FOVRadius * 2
+)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.ZIndex = 1
+FOVCircle.Parent = ScreenGui
+
+AddCorner(FOVCircle, 999)
+
+AddStroke(
+	FOVCircle,
+	COLORS.BlueBright,
+	1,
+	0.78
+)
+
+--========================================================--
+-- IMAGE DEV BUTTON
+--========================================================--
+
+local DevButton = Instance.new("ImageButton")
+DevButton.Name = "DEV"
+DevButton.AnchorPoint = Vector2.new(0, 0.5)
+DevButton.Position = UDim2.new(0, 18, 0.5, 0)
+DevButton.Size = UDim2.fromOffset(52, 52)
+DevButton.BackgroundColor3 = COLORS.Black
+DevButton.BorderSizePixel = 0
+DevButton.Image = "rbxassetid://129427980084843"
+DevButton.ImageColor3 = COLORS.White
+DevButton.ScaleType = Enum.ScaleType.Fit
+DevButton.Visible = false
+DevButton.AutoButtonColor = false
+DevButton.Parent = ScreenGui
+
+AddCorner(DevButton, 100)
+AddStroke(DevButton, COLORS.BorderBlue, 1.5)
+
+local DevGradient = Instance.new("UIGradient")
+DevGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 70, 125)),
+	ColorSequenceKeypoint.new(0.65, Color3.fromRGB(15, 25, 45)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 20, 30)),
+})
+DevGradient.Rotation = 25
+DevGradient.Parent = DevButton
+
+--========================================================--
+-- DEV BUTTON DRAG
+--========================================================--
+
+local devDragging = false
+local devDragStart
+local devStartPosition
+
+table.insert(
+	GuiConnections,
+	DevButton.InputBegan:Connect(function(input)
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+
+			devDragging = true
+			devDragStart = input.Position
+			devStartPosition = DevButton.Position
+
+		end
+
+	end)
+)
+
+table.insert(
+	GuiConnections,
+	UserInputService.InputChanged:Connect(function(input)
+
+		if not devDragging then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+
+			local delta = input.Position - devDragStart
+
+			DevButton.Position = UDim2.new(
+				devStartPosition.X.Scale,
+				devStartPosition.X.Offset + delta.X,
+				devStartPosition.Y.Scale,
+				devStartPosition.Y.Offset + delta.Y
+			)
+
+		end
+
+	end)
+)
+
+table.insert(
+	GuiConnections,
+	UserInputService.InputEnded:Connect(function(input)
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+
+			devDragging = false
+
+		end
+
+	end)
+)
+
+--========================================================--
+-- OPEN / CLOSE
+--========================================================--
+
+table.insert(
+	GuiConnections,
+	Close.MouseButton1Click:Connect(function()
+
+		Main.Visible = false
+		DevButton.Visible = true
+
+	end)
+)
+
+table.insert(
+	GuiConnections,
+	DevButton.MouseButton1Click:Connect(function()
+
+		DevButton.Visible = false
+
+		Main.Visible = true
+
+		Main.Size = UDim2.fromOffset(
+			610,
+			385
+		)
+
+		Tween(
+			Main,
+			{
+				Size = UDim2.fromOffset(
+					650,
+					410
+				)
+			},
+			0.25,
+			Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		)
+
+	end)
+)
+
+--========================================================--
+-- TARGET SYSTEM
+--========================================================--
+
+local function GetCharacterFromTarget(target)
+
+	if not target then
+		return nil
+	end
+
+	if target:IsA("Player") then
+		return target.Character
+	end
+
+	if target:IsA("Model") then
+		return target
+	end
+
+	return nil
+end
+
+local function GetAimPart(character)
+
+	if not character then
+		return nil
+	end
+
+	local head = character:FindFirstChild("Head")
+
+	if head and head:IsA("BasePart") then
+		return head
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
+	return nil
+end
+
+local function IsAlive(character)
+
+	if not character then
+		return false
+	end
+
+	local humanoid =
+		character:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid then
+		return false
+	end
+
+	return humanoid.Health > 0
+end
+
+local function GetLocalRoot()
+
+	local character = LocalPlayer.Character
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild(
+		"HumanoidRootPart"
+	)
+end
+
+local function GetDistanceFromLocal(character)
+
+	local localRoot = GetLocalRoot()
+	local targetPart = GetAimPart(character)
+
+	if not localRoot or not targetPart then
+		return math.huge
+	end
+
+	return (
+		localRoot.Position -
+		targetPart.Position
+	).Magnitude
+end
+
+local function GetCandidates()
+
+	local candidates = {}
+
+	-- PLAYERS
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		if player ~= LocalPlayer then
+
+			local character = player.Character
+
+			if character and IsAlive(character) then
+
+				local distance =
+					GetDistanceFromLocal(character)
+
+				if distance <= Settings.MaxTargetDistance then
+
+					table.insert(
+						candidates,
+						{
+							Object = player,
+							Character = character,
+							Distance = distance
+						}
+					)
+
+				end
+			end
+		end
+	end
+
+	-- NPC / DUMMIES
+	for _, object in ipairs(workspace:GetDescendants()) do
+
+		if object:IsA("Model") then
+
+			local humanoid =
+				object:FindFirstChildOfClass(
+					"Humanoid"
+				)
+
+			if humanoid and humanoid.Health > 0 then
+
+				local player =
+					Players:GetPlayerFromCharacter(
+						object
+					)
+
+				if not player then
+
+					local distance =
+						GetDistanceFromLocal(object)
+
+					if distance <=
+						Settings.MaxTargetDistance then
+
+						table.insert(
+							candidates,
+							{
+								Object = object,
+								Character = object,
+								Distance = distance
+							}
+						)
+
+					end
+				end
+			end
+		end
+	end
+
+	return candidates
+end
+
+local function FindNearest()
+
+	local candidates = GetCandidates()
+
+	local closest = nil
+
+	for _, candidate in ipairs(candidates) do
+
+		if not closest
+			or candidate.Distance <
+			closest.Distance then
+
+			closest = candidate
+
+		end
+	end
+
+	if closest then
+		return closest.Object
+	end
+
+	return nil
+end
+
+local function GetTargetObjectDistance(target)
+
+	local character =
+		GetCharacterFromTarget(target)
+
+	if not character then
+		return math.huge
+	end
+
+	if not IsAlive(character) then
+		return math.huge
+	end
+
+	return GetDistanceFromLocal(character)
+end
+
+local function IsValidTarget(target)
+
+	if not target then
+		return false
+	end
+
+	local character =
+		GetCharacterFromTarget(target)
+
+	if not character then
+		return false
+	end
+
+	if not IsAlive(character) then
+		return false
+	end
+
+	local distance =
+		GetDistanceFromLocal(character)
+
+	if distance >
+		Settings.MaxTargetDistance then
+
+		return false
+	end
+
+	return true
+end
+
+--========================================================--
+-- TARGET VISUAL
+--========================================================--
+
+local CurrentHighlight = nil
+local CurrentBillboard = nil
+
+local function ClearTargetVisual()
+
+	if CurrentHighlight then
+		CurrentHighlight:Destroy()
+		CurrentHighlight = nil
+	end
+
+	if CurrentBillboard then
+		CurrentBillboard:Destroy()
+		CurrentBillboard = nil
+	end
+end
+
+local function CreateTargetVisual(target)
+
+	ClearTargetVisual()
+
+	if not Settings.ShowTargetIndicator then
+		return
+	end
+
+	local character =
+		GetCharacterFromTarget(target)
+
+	if not character then
+		return
+	end
+
+	local humanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if not humanoid then
+		return
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "PrivateTestTarget"
+	highlight.Adornee = character
+	highlight.FillColor = COLORS.Red
+	highlight.FillTransparency = 0.78
+	highlight.OutlineColor = COLORS.White
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode =
+		Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = character
+
+	CurrentHighlight = highlight
+
+	local aimPart =
+		GetAimPart(character)
+
+	if not aimPart then
+		return
+	end
+
+	local billboard =
+		Instance.new("BillboardGui")
+
+	billboard.Name =
+		"PrivateTestTargetInfo"
+
+	billboard.Adornee = aimPart
+
+	billboard.Size =
+		UDim2.fromOffset(150, 38)
+
+	billboard.StudsOffset =
+		Vector3.new(0, 3.2, 0)
+
+	billboard.AlwaysOnTop = true
+
+	billboard.MaxDistance =
+		Settings.MaxTargetDistance + 50
+
+	billboard.Parent = aimPart
+
+	local label =
+		Instance.new("TextLabel")
+
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBold
+	label.Text = "TARGET"
+	label.TextColor3 = COLORS.Red
+	label.TextStrokeTransparency = 0.35
+	label.TextSize = 12
+	label.Parent = billboard
+
+	CurrentBillboard = billboard
+end
+
+--========================================================--
+-- SMART TARGET UPDATE
+--========================================================--
+
+local function UpdateTarget()
+
+	if not Settings.Enabled
+		or not Settings.TargetLock then
+
+		if CurrentTarget then
+			CurrentTarget = nil
+			ClearTargetVisual()
+		end
+
+		return
+	end
+
+	local currentValid =
+		IsValidTarget(CurrentTarget)
+
+	-- LOCK MODE
+	if Settings.TargetMode == "LOCK" then
+
+		if currentValid then
+			return
+		end
+
+		CurrentTarget = FindNearest()
+
+		if CurrentTarget then
+			CreateTargetVisual(CurrentTarget)
+		else
+			ClearTargetVisual()
+		end
+
+		return
+	end
+
+	-- NEAREST MODE
+	if Settings.TargetMode == "NEAREST" then
+
+		local nearest = FindNearest()
+
+		if nearest ~= CurrentTarget then
+
+			CurrentTarget = nearest
+
+			if CurrentTarget then
+				CreateTargetVisual(CurrentTarget)
+			else
+				ClearTargetVisual()
+			end
+		end
+
+		return
+	end
+
+	-- SMART MODE
+	local nearest = FindNearest()
+
+	if not currentValid then
+
+		CurrentTarget = nearest
+		TargetSwitchStarted = 0
+
+		if CurrentTarget then
+			CreateTargetVisual(CurrentTarget)
+		else
+			ClearTargetVisual()
+		end
+
+		return
+	end
+
+	if not nearest then
+		return
+	end
+
+	if nearest == CurrentTarget then
+		TargetSwitchStarted = 0
+		return
+	end
+
+	local currentDistance =
+		GetTargetObjectDistance(
+			CurrentTarget
+		)
+
+	local nearestDistance =
+		GetTargetObjectDistance(
+			nearest
+		)
+
+	if nearestDistance <
+		currentDistance * Settings.SwitchRatio then
+
+		if TargetSwitchStarted == 0 then
+			TargetSwitchStarted = os.clock()
+		end
+
+		if os.clock() -
+			TargetSwitchStarted >=
+			Settings.SwitchDelay then
+
+			CurrentTarget = nearest
+			TargetSwitchStarted = 0
+
+			CreateTargetVisual(CurrentTarget)
+
+		end
+
+	else
+
+		TargetSwitchStarted = 0
+
+	end
+end
+
+--========================================================--
+-- CAMERA FOLLOW
+--========================================================--
+
+local function CameraFollowTarget(deltaTime)
+
+	local camera =
+		workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	if not Settings.Enabled then
+		return
+	end
+
+	if not Settings.TargetLock then
+		return
+	end
+
+	if not Settings.CameraFollow then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return
+	end
+
+	local character =
+		GetCharacterFromTarget(
+			CurrentTarget
+		)
+
+	if not character then
+		return
+	end
+
+	local aimPart =
+		GetAimPart(character)
+
+	if not aimPart then
+		return
+	end
+
+	local cameraPosition =
+		camera.CFrame.Position
+
+	local targetPosition =
+		aimPart.Position +
+		Vector3.new(0, 0.35, 0)
+
+	local direction =
+		targetPosition -
+		cameraPosition
+
+	if direction.Magnitude < 0.05 then
+		return
+	end
+
+	local desiredCFrame =
+		CFrame.lookAt(
+			cameraPosition,
+			targetPosition
+		)
+
+	local fastAlpha =
+		1 - math.exp(
+			-Settings.CameraSpeed *
+			deltaTime
+		)
+
+	local smoothAlpha =
+		math.clamp(
+			fastAlpha *
+			Settings.CameraSmoothness,
+			0.08,
+			0.92
+		)
+
+	camera.CFrame =
+		camera.CFrame:Lerp(
+			desiredCFrame,
+			smoothAlpha
+		)
+
+	LastCameraCFrame =
+		camera.CFrame
+end
+
+--========================================================--
+-- TARGET UPDATE
+--========================================================--
+
+local targetTimer = 0
+
+table.insert(
+	Connections,
+	RunService.Heartbeat:Connect(
+		function(deltaTime)
+
+			targetTimer += deltaTime
+
+			if targetTimer >= 0.05 then
+
+				targetTimer = 0
+
+				UpdateTarget()
+
+			end
+
+		end
+	)
+)
+
+--========================================================--
+-- CAMERA RENDER
+--========================================================--
+
+RunService:BindToRenderStep(
+	"KyzenPerksCameraFollow",
+	Enum.RenderPriority.Camera.Value + 10,
+	function(deltaTime)
+
+		CameraFollowTarget(deltaTime)
+
+	end
+)
+
+--========================================================--
+-- RESPAWN RESET
+--========================================================--
+
+table.insert(
+	Connections,
+	LocalPlayer.CharacterAdded:Connect(
+		function()
+
+			CurrentTarget = nil
+			TargetSwitchStarted = 0
+			LastCameraCFrame = nil
+
+			ClearTargetVisual()
+
+		end
+	)
+)
+
+--========================================================--
+-- CAMERA / UI RESIZE
+--========================================================--
+
+if workspace.CurrentCamera then
+
+	table.insert(
+		Connections,
+		workspace.CurrentCamera
+			:GetPropertyChangedSignal(
+				"ViewportSize"
+			)
+			:Connect(function()
+
+				UpdateScale()
+
+			end)
+	)
+
+end
+
+--========================================================--
+-- LOADING SEQUENCE
+--========================================================--
+
+task.spawn(function()
+
+	local loadingSteps = {
+		{
+			"Initializing interface...",
+			0.25
+		},
+		{
+			"Loading target controls...",
+			0.50
+		},
+		{
+			"Preparing camera system...",
+			0.75
+		},
+		{
+			"Finalizing developer panel...",
+			1
+		},
+	}
+
+	for _, step in ipairs(loadingSteps) do
+
+		LoadingStatus.Text = step[1]
+
+		Tween(
+			LoadingBar,
+			{
+				Size = UDim2.new(
+					step[2],
+					0,
+					1,
+					0
+				)
+			},
+			0.32
+		)
+
+		task.wait(0.36)
+
+	end
+
+	LoadingStatus.Text = "Ready"
+	LoadingStatus.TextColor3 =
+		COLORS.White
+
+	task.wait(0.3)
+
+	Tween(
+		Loading,
+		{
+			BackgroundTransparency = 1
+		},
+		0.25
+	)
+
+	for _, object in ipairs(
+		Loading:GetDescendants()
+	) do
+
+		if object:IsA("TextLabel") then
+
+			Tween(
+				object,
+				{
+					TextTransparency = 1
+				},
+				0.2
+			)
+
+		elseif object:IsA("Frame")
+			and object ~= Loading then
+
+			Tween(
+				object,
+				{
+					BackgroundTransparency = 1
+				},
+				0.2
+			)
+
+		end
+	end
+
+	task.wait(0.28)
+
+	Loading:Destroy()
+
+	Main.Visible = true
+
+	Main.Size =
+		UDim2.fromOffset(
+			610,
+			385
+		)
+
+	SetTab("AimTarget")
+
+	Tween(
+		Main,
+		{
+			Size =
+				UDim2.fromOffset(
+					650,
+					410
+				)
+		},
+		0.28,
+		Enum.EasingStyle.Back,
+		Enum.EasingDirection.Out
+	)
+
+	task.wait(0.35)
+
+	DevButton.Visible = false
+
+end)
+
+print("========================================")
+print("KYZEN PERKS V1, 2.1")
+print("GUI V2.1 LOADED")
+print("CIRCLE TOGGLES: ACTIVE")
+print("IMAGE DEV BUTTON: ACTIVE")
+print("SCROLLING PAGES: ACTIVE")
+print("FOV CONTROL: ACTIVE")
+print("CAMERA SPEED GUI: REMOVED")
+print("========================================")
