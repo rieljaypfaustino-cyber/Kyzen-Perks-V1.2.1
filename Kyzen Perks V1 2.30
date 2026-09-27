@@ -1,0 +1,1769 @@
+--// =========================================================
+--// KYZEN PERKS - PRIVATE DEVELOPER TEST SYSTEM
+--// VERSION: V1.3.0
+--// =========================================================
+
+--// SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+--// =========================================================
+--// SETTINGS
+--// =========================================================
+
+local Settings = {
+	TargetLock = false,
+	AimAssist = false,
+
+	-- NEW
+	AutoShoot = false,
+
+	AimSmoothness = 0.18,
+
+	ShowFOV = false,
+	FOVRadius = 145,
+
+	TargetMode = "SMART",
+	TargetRange = 250,
+	CameraSpeed = 1,
+
+	AutoShootCooldown = 0.12,
+}
+
+local VERSION = "V1.3.0"
+local DISCORD_INVITE = "Insert Discord Link Here"
+
+--// =========================================================
+--// COLORS
+--// =========================================================
+
+local COLORS = {
+	Background = Color3.fromRGB(8, 10, 14),
+	Panel = Color3.fromRGB(14, 17, 23),
+	Panel2 = Color3.fromRGB(20, 24, 31),
+
+	White = Color3.fromRGB(245, 247, 250),
+	Muted = Color3.fromRGB(155, 162, 174),
+
+	Blue = Color3.fromRGB(55, 135, 255),
+	BlueDark = Color3.fromRGB(25, 75, 155),
+
+	Red = Color3.fromRGB(255, 65, 75),
+	RedDark = Color3.fromRGB(145, 25, 35),
+
+	Stroke = Color3.fromRGB(45, 50, 60),
+	BlackStroke = Color3.fromRGB(2, 3, 5),
+}
+
+--// =========================================================
+--// UTILITY
+--// =========================================================
+
+local function New(className, properties, parent)
+	local object = Instance.new(className)
+
+	for property, value in pairs(properties or {}) do
+		object[property] = value
+	end
+
+	if parent then
+		object.Parent = parent
+	end
+
+	return object
+end
+
+local function AddCorner(object, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.Parent = object
+	return corner
+end
+
+local function AddStroke(object, color, thickness, transparency)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color or COLORS.Stroke
+	stroke.Thickness = thickness or 1
+	stroke.Transparency = transparency or 0
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = object
+	return stroke
+end
+
+local function AddGradient(object, color1, color2, rotation)
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, color1),
+		ColorSequenceKeypoint.new(1, color2),
+	})
+	gradient.Rotation = rotation or 90
+	gradient.Parent = object
+	return gradient
+end
+
+local function Tween(object, info, properties)
+	local tween = TweenService:Create(object, info, properties)
+	tween:Play()
+	return tween
+end
+
+--// =========================================================
+--// SCREEN GUI
+--// =========================================================
+
+local OldGui = PlayerGui:FindFirstChild("PrivateTestSystem")
+
+if OldGui then
+	OldGui:Destroy()
+end
+
+local ScreenGui = New("ScreenGui", {
+	Name = "PrivateTestSystem",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, PlayerGui)
+
+--// =========================================================
+--// RESPONSIVE SCALE
+--// =========================================================
+
+local Scale = New("UIScale", {
+	Scale = 1,
+}, ScreenGui)
+
+local function UpdateScale()
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	local viewport = camera.ViewportSize
+
+	if viewport.X < 700 then
+		Scale.Scale = math.clamp(viewport.X / 520, 0.78, 0.95)
+	else
+		Scale.Scale = math.clamp(viewport.X / 1200, 0.90, 1.08)
+	end
+end
+
+UpdateScale()
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	task.wait()
+	UpdateScale()
+end)
+
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
+end
+
+--// =========================================================
+--// FOV
+--// =========================================================
+
+local FOVCircle = New("Frame", {
+	Name = "FOVCircle",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(Settings.FOVRadius * 2, Settings.FOVRadius * 2),
+	BackgroundTransparency = 1,
+	Visible = Settings.ShowFOV,
+	ZIndex = 2,
+}, ScreenGui)
+
+AddCorner(FOVCircle, 999)
+AddStroke(FOVCircle, COLORS.Blue, 1.5, 0.15)
+
+local FOVLabel = New("TextLabel", {
+	Name = "FOVLabel",
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 1, 5),
+	Size = UDim2.fromOffset(100, 20),
+	BackgroundTransparency = 1,
+	Text = "FOV",
+	TextColor3 = COLORS.Muted,
+	TextSize = 11,
+	Font = Enum.Font.GothamMedium,
+}, FOVCircle)
+
+--// =========================================================
+--// LOADING
+--// =========================================================
+
+local Loading = New("Frame", {
+	Name = "Loading",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundColor3 = COLORS.Background,
+	BorderSizePixel = 0,
+	ZIndex = 100,
+}, ScreenGui)
+
+local LoadingTitle = New("TextLabel", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.46),
+	Size = UDim2.fromOffset(500, 50),
+	BackgroundTransparency = 1,
+	Text = "KYZEN PERKS",
+	TextColor3 = COLORS.White,
+	TextSize = 30,
+	Font = Enum.Font.GothamBold,
+	ZIndex = 101,
+}, Loading)
+
+local LoadingSub = New("TextLabel", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.53),
+	Size = UDim2.fromOffset(500, 30),
+	BackgroundTransparency = 1,
+	Text = "PRIVATE DEVELOPER TEST SYSTEM",
+	TextColor3 = COLORS.Blue,
+	TextSize = 12,
+	Font = Enum.Font.GothamMedium,
+	ZIndex = 101,
+}, Loading)
+
+local LoadingBarBack = New("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.60),
+	Size = UDim2.fromOffset(260, 5),
+	BackgroundColor3 = COLORS.Panel2,
+	BorderSizePixel = 0,
+	ZIndex = 101,
+}, Loading)
+
+AddCorner(LoadingBarBack, 10)
+
+local LoadingBar = New("Frame", {
+	Size = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = COLORS.Blue,
+	BorderSizePixel = 0,
+	ZIndex = 102,
+}, LoadingBarBack)
+
+AddCorner(LoadingBar, 10)
+
+--// =========================================================
+--// MAIN WINDOW
+--// =========================================================
+
+local Main = New("Frame", {
+	Name = "Main",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(650, 420),
+	BackgroundColor3 = COLORS.Background,
+	BorderSizePixel = 0,
+	Visible = false,
+}, ScreenGui)
+
+AddCorner(Main, 12)
+AddStroke(Main, COLORS.BlackStroke, 2)
+
+--// =========================================================
+--// HEADER
+--// =========================================================
+
+local Header = New("Frame", {
+	Name = "Header",
+	Size = UDim2.new(1, 0, 0, 62),
+	BackgroundColor3 = COLORS.Panel,
+	BorderSizePixel = 0,
+}, Main)
+
+AddCorner(Header, 12)
+
+local HeaderCover = New("Frame", {
+	Position = UDim2.new(0, 0, 1, -12),
+	Size = UDim2.new(1, 0, 0, 12),
+	BackgroundColor3 = COLORS.Panel,
+	BorderSizePixel = 0,
+}, Header)
+
+local Title = New("TextLabel", {
+	Position = UDim2.fromOffset(20, 10),
+	Size = UDim2.fromOffset(350, 25),
+	BackgroundTransparency = 1,
+	Text = "KYZEN PERKS",
+	TextColor3 = COLORS.White,
+	TextSize = 20,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+
+local Version = New("TextLabel", {
+	Position = UDim2.fromOffset(21, 35),
+	Size = UDim2.fromOffset(200, 18),
+	BackgroundTransparency = 1,
+	Text = "PRIVATE TEST • " .. VERSION,
+	TextColor3 = COLORS.Muted,
+	TextSize = 10,
+	Font = Enum.Font.GothamMedium,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+
+local Close = New("TextButton", {
+	Name = "Close",
+	AnchorPoint = Vector2.new(1, 0.5),
+	Position = UDim2.new(1, -15, 0.5, 0),
+	Size = UDim2.fromOffset(34, 34),
+	BackgroundColor3 = COLORS.Panel2,
+	Text = "×",
+	TextColor3 = COLORS.White,
+	TextSize = 22,
+	Font = Enum.Font.GothamBold,
+	AutoButtonColor = false,
+}, Header)
+
+AddCorner(Close, 8)
+AddStroke(Close, COLORS.Stroke, 1)
+
+Close.MouseEnter:Connect(function()
+	Tween(Close, TweenInfo.new(0.15), {
+		BackgroundColor3 = COLORS.RedDark,
+	})
+end)
+
+Close.MouseLeave:Connect(function()
+	Tween(Close, TweenInfo.new(0.15), {
+		BackgroundColor3 = COLORS.Panel2,
+	})
+end)
+
+--// =========================================================
+--// TAB PANEL
+--// =========================================================
+
+local TabsPanel = New("Frame", {
+	Name = "TabsPanel",
+	Position = UDim2.fromOffset(12, 74),
+	Size = UDim2.new(0, 155, 1, -86),
+	BackgroundColor3 = COLORS.Panel,
+	BorderSizePixel = 0,
+}, Main)
+
+AddCorner(TabsPanel, 10)
+AddStroke(TabsPanel, COLORS.Stroke, 1)
+
+local TabLayout = New("UIListLayout", {
+	Padding = UDim.new(0, 6),
+	HorizontalAlignment = Enum.HorizontalAlignment.Center,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+}, TabsPanel)
+
+New("UIPadding", {
+	PaddingTop = UDim.new(0, 12),
+	PaddingLeft = UDim.new(0, 8),
+	PaddingRight = UDim.new(0, 8),
+}, TabsPanel)
+
+--// =========================================================
+--// CONTENT
+--// =========================================================
+
+local Content = New("Frame", {
+	Name = "Content",
+	Position = UDim2.fromOffset(179, 74),
+	Size = UDim2.new(1, -191, 1, -86),
+	BackgroundColor3 = COLORS.Panel,
+	BorderSizePixel = 0,
+}, Main)
+
+AddCorner(Content, 10)
+AddStroke(Content, COLORS.Stroke, 1)
+
+--// =========================================================
+--// PAGES
+--// =========================================================
+
+local AimPage = New("ScrollingFrame", {
+	Name = "AimTarget",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 2,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Visible = true,
+}, Content)
+
+local SettingsPage = New("ScrollingFrame", {
+	Name = "Settings",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 2,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Visible = false,
+}, Content)
+
+local InfoPage = New("ScrollingFrame", {
+	Name = "InfoCredit",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 2,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Visible = false,
+}, Content)
+
+local DiscordPage = New("ScrollingFrame", {
+	Name = "Discord",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 2,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Visible = false,
+}, Content)
+
+local function AddPagePadding(page)
+	New("UIPadding", {
+		PaddingTop = UDim.new(0, 15),
+		PaddingBottom = UDim.new(0, 15),
+		PaddingLeft = UDim.new(0, 16),
+		PaddingRight = UDim.new(0, 16),
+	}, page)
+end
+
+AddPagePadding(AimPage)
+AddPagePadding(SettingsPage)
+AddPagePadding(InfoPage)
+AddPagePadding(DiscordPage)
+
+local function AddPageLayout(page)
+	New("UIListLayout", {
+		Padding = UDim.new(0, 10),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, page)
+end
+
+AddPageLayout(AimPage)
+AddPageLayout(SettingsPage)
+AddPageLayout(InfoPage)
+AddPageLayout(DiscordPage)
+
+--// =========================================================
+--// PAGE HEADER
+--// =========================================================
+
+local function CreatePageHeader(parent, title, subtitle)
+	local Holder = New("Frame", {
+		Size = UDim2.new(1, 0, 0, 55),
+		BackgroundTransparency = 1,
+	}, parent)
+
+	local Text = New("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 28),
+		BackgroundTransparency = 1,
+		Text = title,
+		TextColor3 = COLORS.White,
+		TextSize = 18,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	local Sub = New("TextLabel", {
+		Position = UDim2.fromOffset(0, 29),
+		Size = UDim2.new(1, 0, 0, 20),
+		BackgroundTransparency = 1,
+		Text = subtitle,
+		TextColor3 = COLORS.Muted,
+		TextSize = 10,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	return Holder
+end
+
+CreatePageHeader(
+	AimPage,
+	"AIM & TARGET",
+	"Target selection and developer testing controls."
+)
+
+CreatePageHeader(
+	SettingsPage,
+	"SETTINGS",
+	"Detection and targeting configuration."
+)
+
+CreatePageHeader(
+	InfoPage,
+	"INFO & CREDIT",
+	"System information and developer credits."
+)
+
+CreatePageHeader(
+	DiscordPage,
+	"DISCORD",
+	"Developer community and update information."
+)
+
+--// =========================================================
+--// TOGGLE
+--// =========================================================
+
+local function CreateToggle(parent, title, description, defaultValue, callback)
+	local Holder = New("Frame", {
+		Size = UDim2.new(1, 0, 0, 64),
+		BackgroundColor3 = COLORS.Panel2,
+		BorderSizePixel = 0,
+	}, parent)
+
+	AddCorner(Holder, 8)
+	AddStroke(Holder, COLORS.Stroke, 1)
+
+	local TitleLabel = New("TextLabel", {
+		Position = UDim2.fromOffset(13, 9),
+		Size = UDim2.new(1, -90, 0, 20),
+		BackgroundTransparency = 1,
+		Text = title,
+		TextColor3 = COLORS.White,
+		TextSize = 12,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	local DescLabel = New("TextLabel", {
+		Position = UDim2.fromOffset(13, 31),
+		Size = UDim2.new(1, -90, 0, 22),
+		BackgroundTransparency = 1,
+		Text = description,
+		TextColor3 = COLORS.Muted,
+		TextSize = 9,
+		Font = Enum.Font.GothamMedium,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	local Button = New("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(54, 28),
+		BackgroundColor3 = COLORS.RedDark,
+		Text = "",
+		AutoButtonColor = false,
+	}, Holder)
+
+	AddCorner(Button, 14)
+
+	local Circle = New("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 4, 0.5, 0),
+		Size = UDim2.fromOffset(20, 20),
+		BackgroundColor3 = COLORS.White,
+		BorderSizePixel = 0,
+	}, Button)
+
+	AddCorner(Circle, 99)
+
+	local enabled = defaultValue
+
+	local function Refresh()
+		if enabled then
+			Tween(Button, TweenInfo.new(0.18), {
+				BackgroundColor3 = COLORS.Blue,
+			})
+
+			Tween(Circle, TweenInfo.new(0.18), {
+				Position = UDim2.new(1, -24, 0.5, 0),
+			})
+		else
+			Tween(Button, TweenInfo.new(0.18), {
+				BackgroundColor3 = COLORS.RedDark,
+			})
+
+			Tween(Circle, TweenInfo.new(0.18), {
+				Position = UDim2.new(0, 4, 0.5, 0),
+			})
+		end
+	end
+
+	Button.MouseButton1Click:Connect(function()
+		enabled = not enabled
+		Refresh()
+
+		if callback then
+			callback(enabled)
+		end
+	end)
+
+	Refresh()
+
+	return Holder
+end
+
+--// =========================================================
+--// NUMBER CONTROL
+--// =========================================================
+
+local function CreateNumberControl(parent, title, description, defaultValue, minimum, maximum, step, callback)
+	local Holder = New("Frame", {
+		Size = UDim2.new(1, 0, 0, 72),
+		BackgroundColor3 = COLORS.Panel2,
+		BorderSizePixel = 0,
+	}, parent)
+
+	AddCorner(Holder, 8)
+	AddStroke(Holder, COLORS.Stroke, 1)
+
+	New("TextLabel", {
+		Position = UDim2.fromOffset(13, 9),
+		Size = UDim2.new(1, -130, 0, 20),
+		BackgroundTransparency = 1,
+		Text = title,
+		TextColor3 = COLORS.White,
+		TextSize = 12,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	New("TextLabel", {
+		Position = UDim2.fromOffset(13, 32),
+		Size = UDim2.new(1, -130, 0, 25),
+		BackgroundTransparency = 1,
+		Text = description,
+		TextColor3 = COLORS.Muted,
+		TextSize = 9,
+		Font = Enum.Font.GothamMedium,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	local Minus = New("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -68, 0.5, 0),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = COLORS.Background,
+		Text = "−",
+		TextColor3 = COLORS.White,
+		TextSize = 16,
+		Font = Enum.Font.GothamBold,
+		AutoButtonColor = false,
+	}, Holder)
+
+	AddCorner(Minus, 7)
+	AddStroke(Minus, COLORS.Stroke, 1)
+
+	local Value = New("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -38, 0.5, 0),
+		Size = UDim2.fromOffset(45, 28),
+		BackgroundTransparency = 1,
+		TextColor3 = COLORS.Blue,
+		TextSize = 11,
+		Font = Enum.Font.GothamBold,
+		Text = tostring(defaultValue),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	}, Holder)
+
+	local Plus = New("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = COLORS.Background,
+		Text = "+",
+		TextColor3 = COLORS.White,
+		TextSize = 16,
+		Font = Enum.Font.GothamBold,
+		AutoButtonColor = false,
+	}, Holder)
+
+	AddCorner(Plus, 7)
+	AddStroke(Plus, COLORS.Stroke, 1)
+
+	local value = defaultValue
+
+	local function Refresh()
+		Value.Text = tostring(value)
+
+		if callback then
+			callback(value)
+		end
+	end
+
+	Minus.MouseButton1Click:Connect(function()
+		value = math.clamp(value - step, minimum, maximum)
+		Refresh()
+	end)
+
+	Plus.MouseButton1Click:Connect(function()
+		value = math.clamp(value + step, minimum, maximum)
+		Refresh()
+	end)
+
+	Refresh()
+
+	return Holder
+end
+
+--// =========================================================
+--// MODE SELECTOR
+--// =========================================================
+
+local function CreateModeSelector(parent, title, description, modes, defaultMode, callback)
+	local Holder = New("Frame", {
+		Size = UDim2.new(1, 0, 0, 88),
+		BackgroundColor3 = COLORS.Panel2,
+		BorderSizePixel = 0,
+	}, parent)
+
+	AddCorner(Holder, 8)
+	AddStroke(Holder, COLORS.Stroke, 1)
+
+	New("TextLabel", {
+		Position = UDim2.fromOffset(13, 8),
+		Size = UDim2.new(1, -26, 0, 20),
+		BackgroundTransparency = 1,
+		Text = title,
+		TextColor3 = COLORS.White,
+		TextSize = 12,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	New("TextLabel", {
+		Position = UDim2.fromOffset(13, 30),
+		Size = UDim2.new(1, -26, 0, 18),
+		BackgroundTransparency = 1,
+		Text = description,
+		TextColor3 = COLORS.Muted,
+		TextSize = 9,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Holder)
+
+	local Buttons = New("Frame", {
+		Position = UDim2.fromOffset(10, 54),
+		Size = UDim2.new(1, -20, 0, 27),
+		BackgroundTransparency = 1,
+	}, Holder)
+
+	New("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0, 5),
+	}, Buttons)
+
+	local current = defaultMode
+
+	for _, mode in ipairs(modes) do
+		local Button = New("TextButton", {
+			Size = UDim2.fromOffset(75, 27),
+			BackgroundColor3 = COLORS.Background,
+			Text = mode,
+			TextColor3 = COLORS.Muted,
+			TextSize = 9,
+			Font = Enum.Font.GothamBold,
+			AutoButtonColor = false,
+		}, Buttons)
+
+		AddCorner(Button, 6)
+		AddStroke(Button, COLORS.Stroke, 1)
+
+		local function Refresh()
+			if current == mode then
+				Button.BackgroundColor3 = COLORS.Blue
+				Button.TextColor3 = COLORS.White
+			else
+				Button.BackgroundColor3 = COLORS.Background
+				Button.TextColor3 = COLORS.Muted
+			end
+		end
+
+		Button.MouseButton1Click:Connect(function()
+			current = mode
+
+			for _, child in ipairs(Buttons:GetChildren()) do
+				if child:IsA("TextButton") then
+					if child.Text == current then
+						child.BackgroundColor3 = COLORS.Blue
+						child.TextColor3 = COLORS.White
+					else
+						child.BackgroundColor3 = COLORS.Background
+						child.TextColor3 = COLORS.Muted
+					end
+				end
+			end
+
+			if callback then
+				callback(current)
+			end
+		end)
+
+		Refresh()
+	end
+
+	return Holder
+end
+
+--// =========================================================
+--// AIM PAGE
+--// =========================================================
+
+CreateToggle(
+	AimPage,
+	"TARGET LOCK",
+	"Locks the camera onto the selected valid target.",
+	Settings.TargetLock,
+	function(value)
+		Settings.TargetLock = value
+
+		if not value then
+			LockedTarget = nil
+		end
+	end
+)
+
+CreateToggle(
+	AimPage,
+	"AIM ASSIST",
+	"Smoothly assists the camera toward the current target.",
+	Settings.AimAssist,
+	function(value)
+		Settings.AimAssist = value
+	end
+)
+
+--// NEW AUTO SHOOT
+CreateToggle(
+	AimPage,
+	"AUTO SHOOT",
+	"Automatically activates the game's Attack button when a valid target is selected.",
+	Settings.AutoShoot,
+	function(value)
+		Settings.AutoShoot = value
+	end
+)
+
+CreateNumberControl(
+	AimPage,
+	"AIM SMOOTHNESS",
+	"Controls how quickly the camera follows the target.",
+	18,
+	1,
+	100,
+	1,
+	function(value)
+		Settings.AimSmoothness = value / 100
+	end
+)
+
+local AimInfo = New("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 70),
+	BackgroundTransparency = 1,
+	Text = "Developer testing only.\nAuto Shoot uses the existing MobileButtons > Buttons > Attack ImageButton.",
+	TextColor3 = COLORS.Muted,
+	TextSize = 10,
+	Font = Enum.Font.GothamMedium,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+}, AimPage)
+
+--// =========================================================
+--// SETTINGS PAGE
+--// =========================================================
+
+CreateToggle(
+	SettingsPage,
+	"FOV DETECTION",
+	"Shows the target detection field of view.",
+	Settings.ShowFOV,
+	function(value)
+		Settings.ShowFOV = value
+		FOVCircle.Visible = value
+	end
+)
+
+CreateNumberControl(
+	SettingsPage,
+	"FOV SIZE",
+	"Changes the size of the detection circle.",
+	Settings.FOVRadius,
+	50,
+	400,
+	5,
+	function(value)
+		Settings.FOVRadius = value
+		FOVCircle.Size = UDim2.fromOffset(value * 2, value * 2)
+	end
+)
+
+CreateModeSelector(
+	SettingsPage,
+	"TARGET MODE",
+	"Choose how targets are selected.",
+	{"SMART", "NEAREST", "LOCK"},
+	Settings.TargetMode,
+	function(value)
+		Settings.TargetMode = value
+	end
+)
+
+CreateNumberControl(
+	SettingsPage,
+	"TARGET RANGE",
+	"Maximum distance for target detection.",
+	Settings.TargetRange,
+	25,
+	1000,
+	25,
+	function(value)
+		Settings.TargetRange = value
+	end
+)
+
+local SettingsInfo = New("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 50),
+	BackgroundTransparency = 1,
+	Text = "Target detection is handled locally for private developer testing.",
+	TextColor3 = COLORS.Muted,
+	TextSize = 10,
+	Font = Enum.Font.GothamMedium,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+}, SettingsPage)
+
+--// =========================================================
+--// INFO & CREDIT
+--// =========================================================
+
+local DeveloperCard = New("Frame", {
+	Size = UDim2.new(1, 0, 0, 70),
+	BackgroundColor3 = COLORS.Panel2,
+	BorderSizePixel = 0,
+}, InfoPage)
+
+AddCorner(DeveloperCard, 8)
+AddStroke(DeveloperCard, COLORS.Stroke, 1)
+
+New("TextLabel", {
+	Position = UDim2.fromOffset(14, 10),
+	Size = UDim2.new(1, -28, 0, 22),
+	BackgroundTransparency = 1,
+	Text = "DEVELOPER",
+	TextColor3 = COLORS.Muted,
+	TextSize = 9,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, DeveloperCard)
+
+New("TextLabel", {
+	Position = UDim2.fromOffset(14, 30),
+	Size = UDim2.new(1, -28, 0, 25),
+	BackgroundTransparency = 1,
+	Text = "KyzenDevs",
+	TextColor3 = COLORS.White,
+	TextSize = 15,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, DeveloperCard)
+
+local GameInfoBox = New("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 390),
+	BackgroundColor3 = COLORS.Panel2,
+	BorderSizePixel = 0,
+	TextColor3 = COLORS.White,
+	TextSize = 10,
+	Font = Enum.Font.Code,
+	TextWrapped = false,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+}, InfoPage)
+
+AddCorner(GameInfoBox, 8)
+AddStroke(GameInfoBox, COLORS.Stroke, 1)
+
+New("UIPadding", {
+	PaddingTop = UDim.new(0, 14),
+	PaddingBottom = UDim.new(0, 14),
+	PaddingLeft = UDim.new(0, 14),
+	PaddingRight = UDim.new(0, 14),
+}, GameInfoBox)
+
+GameInfoBox.Text = [[
+==================================================
+              ⚡ KYZEN PERKS INFO ⚡
+          [ Powerful Targetlockplayer System ]
+==================================================
+
+⚙️ DEVELOPER : KyzenDevs
+🎮 TARGET GAME: One Tap
+
+📌 OVERVIEW:
+Kyzen Perks is a high-performance script built for
+precision target locking and aim evaluation. Engineered
+with safety protocols to ensure smooth test runs.
+
+✨ FEATURES:
+• Smooth Aimbot / Target Lock System
+• Advanced Safety Protections
+• 100% Manual Shooting Control (No Auto-Shoot)
+
+⚠️ TEST NOTICE:
+Enjoy testing, but please use responsibly! Avoid
+excessive abuse to help keep test logs clean.
+
+🔔 UPCOMING UPDATES:
+Join our Discord server to get notified about future
+KyzenPerks releases and patches!
+👉 [Insert Discord Link Here]
+==================================================
+]]
+
+--// =========================================================
+--// DISCORD PAGE
+--// =========================================================
+
+local DiscordBox = New("Frame", {
+	Size = UDim2.new(1, 0, 0, 120),
+	BackgroundColor3 = COLORS.Panel2,
+	BorderSizePixel = 0,
+}, DiscordPage)
+
+AddCorner(DiscordBox, 8)
+AddStroke(DiscordBox, COLORS.Stroke, 1)
+
+New("TextLabel", {
+	Position = UDim2.fromOffset(14, 12),
+	Size = UDim2.new(1, -28, 0, 20),
+	BackgroundTransparency = 1,
+	Text = "DISCORD INVITE",
+	TextColor3 = COLORS.White,
+	TextSize = 12,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, DiscordBox)
+
+local DiscordInput = New("TextBox", {
+	Position = UDim2.fromOffset(14, 40),
+	Size = UDim2.new(1, -28, 0, 30),
+	BackgroundColor3 = COLORS.Background,
+	Text = DISCORD_INVITE,
+	PlaceholderText = "Discord invite link...",
+	TextColor3 = COLORS.White,
+	PlaceholderColor3 = COLORS.Muted,
+	TextSize = 10,
+	Font = Enum.Font.GothamMedium,
+	ClearTextOnFocus = false,
+}, DiscordBox)
+
+AddCorner(DiscordInput, 6)
+AddStroke(DiscordInput, COLORS.Stroke, 1)
+
+New("TextLabel", {
+	Position = UDim2.fromOffset(14, 78),
+	Size = UDim2.new(1, -28, 0, 28),
+	BackgroundTransparency = 1,
+	Text = "Paste your developer Discord invite above.",
+	TextColor3 = COLORS.Muted,
+	TextSize = 9,
+	Font = Enum.Font.GothamMedium,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, DiscordBox)
+
+--// =========================================================
+--// TABS
+--// =========================================================
+
+local Pages = {
+	["AIM & TARGET"] = AimPage,
+	["SETTINGS"] = SettingsPage,
+	["INFO & CREDIT"] = InfoPage,
+	["DISCORD"] = DiscordPage,
+}
+
+local TabButtons = {}
+local CurrentPage = "AIM & TARGET"
+
+local function CreateTab(name)
+	local Button = New("TextButton", {
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = COLORS.Background,
+		Text = name,
+		TextColor3 = COLORS.Muted,
+		TextSize = 10,
+		Font = Enum.Font.GothamBold,
+		AutoButtonColor = false,
+	}, TabsPanel)
+
+	AddCorner(Button, 7)
+	AddStroke(Button, COLORS.Stroke, 1)
+
+	TabButtons[name] = Button
+
+	Button.MouseButton1Click:Connect(function()
+		CurrentPage = name
+
+		for tabName, tabButton in pairs(TabButtons) do
+			local active = tabName == CurrentPage
+
+			if active then
+				tabButton.BackgroundColor3 = COLORS.Blue
+				tabButton.TextColor3 = COLORS.White
+			else
+				tabButton.BackgroundColor3 = COLORS.Background
+				tabButton.TextColor3 = COLORS.Muted
+			end
+		end
+
+		for pageName, page in pairs(Pages) do
+			page.Visible = pageName == CurrentPage
+		end
+	end)
+
+	return Button
+end
+
+CreateTab("AIM & TARGET")
+CreateTab("SETTINGS")
+CreateTab("INFO & CREDIT")
+CreateTab("DISCORD")
+
+TabButtons["AIM & TARGET"].BackgroundColor3 = COLORS.Blue
+TabButtons["AIM & TARGET"].TextColor3 = COLORS.White
+
+--// =========================================================
+--// DEV OPEN BUTTON
+--// =========================================================
+
+local DevButton = New("ImageButton", {
+	Name = "DEV",
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, 15, 0.5, 0),
+	Size = UDim2.fromOffset(45, 45),
+	BackgroundColor3 = COLORS.Panel,
+	Image = "rbxassetid://129427980084843",
+	AutoButtonColor = false,
+	Visible = false,
+}, ScreenGui)
+
+AddCorner(DevButton, 10)
+AddStroke(DevButton, COLORS.BlackStroke, 2)
+
+--// =========================================================
+--// DRAG SYSTEM
+--// =========================================================
+
+local Dragging = false
+local DragStart
+local StartPosition
+
+Header.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		Dragging = true
+		DragStart = input.Position
+		StartPosition = Main.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				Dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not Dragging then
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	local Delta = input.Position - DragStart
+
+	Main.Position = UDim2.new(
+		StartPosition.X.Scale,
+		StartPosition.X.Offset + Delta.X,
+		StartPosition.Y.Scale,
+		StartPosition.Y.Offset + Delta.Y
+	)
+end)
+
+--// =========================================================
+--// OPEN / CLOSE
+--// =========================================================
+
+local MainOriginalSize = Main.Size
+
+local function OpenMenu()
+	DevButton.Visible = false
+	Main.Visible = true
+
+	Main.Size = UDim2.fromOffset(620, 395)
+
+	Tween(
+		Main,
+		TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{
+			Size = MainOriginalSize
+		}
+	)
+end
+
+local function CloseMenu()
+	Tween(
+		Main,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+		{
+			Size = UDim2.fromOffset(620, 395)
+		}
+	)
+
+	task.delay(0.18, function()
+		Main.Visible = false
+		DevButton.Visible = true
+	end)
+end
+
+Close.MouseButton1Click:Connect(CloseMenu)
+DevButton.MouseButton1Click:Connect(OpenMenu)
+
+--// =========================================================
+--// TARGET SYSTEM
+--// =========================================================
+
+local CurrentTarget = nil
+local LockedTarget = nil
+local TargetHighlight = nil
+local TargetBillboard = nil
+
+local function GetCharacterRoot(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("UpperTorso")
+		or character:FindFirstChild("Torso")
+end
+
+local function IsAlive(character)
+	if not character then
+		return false
+	end
+
+	local Humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	return Humanoid
+		and Humanoid.Health > 0
+end
+
+local function GetTargetPart(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("Head")
+		or GetCharacterRoot(character)
+end
+
+local function IsValidTarget(model)
+	if not model then
+		return false
+	end
+
+	if model == LocalPlayer.Character then
+		return false
+	end
+
+	if not model.Parent then
+		return false
+	end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local root = GetCharacterRoot(model)
+
+	if not root then
+		return false
+	end
+
+	local myCharacter = LocalPlayer.Character
+	local myRoot = GetCharacterRoot(myCharacter)
+
+	if not myRoot then
+		return false
+	end
+
+	local distance = (root.Position - myRoot.Position).Magnitude
+
+	if distance > Settings.TargetRange then
+		return false
+	end
+
+	return true
+end
+
+local function GetCandidates()
+	local candidates = {}
+
+	-- PLAYERS
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			local character = player.Character
+
+			if character and IsValidTarget(character) then
+				table.insert(candidates, character)
+			end
+		end
+	end
+
+	-- NPC / DUMMIES
+	for _, object in ipairs(workspace:GetDescendants()) do
+		if object:IsA("Model")
+			and object ~= LocalPlayer.Character
+			and object:FindFirstChildOfClass("Humanoid")
+			and not Players:GetPlayerFromCharacter(object) then
+
+			if IsValidTarget(object) then
+				table.insert(candidates, object)
+			end
+		end
+	end
+
+	return candidates
+end
+
+local function FindNearest(candidates)
+	local myCharacter = LocalPlayer.Character
+	local myRoot = GetCharacterRoot(myCharacter)
+
+	if not myRoot then
+		return nil
+	end
+
+	local nearest = nil
+	local nearestDistance = math.huge
+
+	for _, character in ipairs(candidates) do
+		local root = GetCharacterRoot(character)
+
+		if root then
+			local distance = (root.Position - myRoot.Position).Magnitude
+
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearest = character
+			end
+		end
+	end
+
+	return nearest
+end
+
+local function FindSmart(candidates)
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return FindNearest(candidates)
+	end
+
+	local center = Vector2.new(
+		camera.ViewportSize.X / 2,
+		camera.ViewportSize.Y / 2
+	)
+
+	local best = nil
+	local bestScore = math.huge
+
+	for _, character in ipairs(candidates) do
+		local targetPart = GetTargetPart(character)
+
+		if targetPart then
+			local screenPosition, visible = camera:WorldToViewportPoint(targetPart.Position)
+
+			if visible and screenPosition.Z > 0 then
+				local distanceFromCenter =
+					(Vector2.new(screenPosition.X, screenPosition.Y) - center).Magnitude
+
+				local distanceFromPlayer = 0
+
+				local myRoot = GetCharacterRoot(LocalPlayer.Character)
+				local targetRoot = GetCharacterRoot(character)
+
+				if myRoot and targetRoot then
+					distanceFromPlayer =
+						(targetRoot.Position - myRoot.Position).Magnitude
+				end
+
+				local score = distanceFromCenter + (distanceFromPlayer * 0.05)
+
+				if score < bestScore then
+					bestScore = score
+					best = character
+				end
+			end
+		end
+	end
+
+	return best or FindNearest(candidates)
+end
+
+local function FindLock(candidates)
+	if LockedTarget and IsValidTarget(LockedTarget) then
+		return LockedTarget
+	end
+
+	return FindNearest(candidates)
+end
+
+local function RemoveTargetVisuals()
+	if TargetHighlight then
+		TargetHighlight:Destroy()
+		TargetHighlight = nil
+	end
+
+	if TargetBillboard then
+		TargetBillboard:Destroy()
+		TargetBillboard = nil
+	end
+end
+
+local function AddTargetVisuals(character)
+	RemoveTargetVisuals()
+
+	if not character then
+		return
+	end
+
+	TargetHighlight = Instance.new("Highlight")
+	TargetHighlight.Name = "KyzenTargetHighlight"
+	TargetHighlight.FillColor = COLORS.Blue
+	TargetHighlight.OutlineColor = COLORS.White
+	TargetHighlight.FillTransparency = 0.75
+	TargetHighlight.OutlineTransparency = 0
+	TargetHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	TargetHighlight.Adornee = character
+	TargetHighlight.Parent = ScreenGui
+
+	local root = GetCharacterRoot(character)
+
+	if root then
+		TargetBillboard = Instance.new("BillboardGui")
+		TargetBillboard.Name = "KyzenTargetBillboard"
+		TargetBillboard.Adornee = root
+		TargetBillboard.Size = UDim2.fromOffset(180, 35)
+		TargetBillboard.StudsOffset = Vector3.new(0, 3.5, 0)
+		TargetBillboard.AlwaysOnTop = true
+		TargetBillboard.Parent = ScreenGui
+
+		local Label = Instance.new("TextLabel")
+		Label.Size = UDim2.fromScale(1, 1)
+		Label.BackgroundTransparency = 1
+		Label.Text = "TARGET"
+		Label.TextColor3 = COLORS.Blue
+		Label.TextStrokeColor3 = COLORS.BlackStroke
+		Label.TextStrokeTransparency = 0
+		Label.TextSize = 12
+		Label.Font = Enum.Font.GothamBold
+		Label.Parent = TargetBillboard
+	end
+end
+
+local function SelectTarget(character)
+	if character and IsValidTarget(character) then
+		CurrentTarget = character
+		AddTargetVisuals(character)
+	else
+		CurrentTarget = nil
+		RemoveTargetVisuals()
+	end
+end
+
+local function UpdateTarget()
+	local candidates = GetCandidates()
+
+	if #candidates == 0 then
+		CurrentTarget = nil
+		RemoveTargetVisuals()
+		return
+	end
+
+	local target
+
+	if Settings.TargetMode == "NEAREST" then
+		target = FindNearest(candidates)
+
+	elseif Settings.TargetMode == "LOCK" then
+		target = FindLock(candidates)
+
+	else
+		target = FindSmart(candidates)
+	end
+
+	if target ~= CurrentTarget then
+		SelectTarget(target)
+	end
+
+	if Settings.TargetMode == "LOCK" and target then
+		LockedTarget = target
+	end
+end
+
+--// =========================================================
+--// CAMERA
+--// =========================================================
+
+local function UpdateCamera()
+	if not CurrentTarget then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		CurrentTarget = nil
+		RemoveTargetVisuals()
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	local targetPart = GetTargetPart(CurrentTarget)
+
+	if not targetPart then
+		return
+	end
+
+	if Settings.TargetLock or Settings.AimAssist then
+		local cameraPosition = camera.CFrame.Position
+		local targetPosition = targetPart.Position
+
+		local desiredCFrame = CFrame.lookAt(
+			cameraPosition,
+			targetPosition
+		)
+
+		local smoothness = math.clamp(
+			Settings.AimSmoothness * Settings.CameraSpeed,
+			0.01,
+			1
+		)
+
+		camera.CFrame = camera.CFrame:Lerp(
+			desiredCFrame,
+			smoothness
+		)
+	end
+end
+
+--// =========================================================
+--// AUTO SHOOT
+--// =========================================================
+
+local LastAutoShot = 0
+
+local function FindAttackButton()
+	local MobileButtons = PlayerGui:FindFirstChild("MobileButtons")
+
+	if not MobileButtons then
+		return nil
+	end
+
+	local Buttons = MobileButtons:FindFirstChild("Buttons")
+
+	if not Buttons then
+		return nil
+	end
+
+	local Attack = Buttons:FindFirstChild("Attack")
+
+	if Attack and Attack:IsA("ImageButton") then
+		return Attack
+	end
+
+	return nil
+end
+
+local function UpdateAutoShoot()
+	if not Settings.AutoShoot then
+		return
+	end
+
+	if not CurrentTarget then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return
+	end
+
+	local AttackButton = FindAttackButton()
+
+	if not AttackButton then
+		return
+	end
+
+	if not AttackButton.Visible then
+		return
+	end
+
+	local now = os.clock()
+
+	if now - LastAutoShot < Settings.AutoShootCooldown then
+		return
+	end
+
+	LastAutoShot = now
+
+	pcall(function()
+		AttackButton:Activate()
+	end)
+end
+
+--// =========================================================
+--// RENDER LOOP
+--// =========================================================
+
+RunService:BindToRenderStep(
+	"KyzenPerksCamera",
+	Enum.RenderPriority.Camera.Value + 1,
+	function()
+		UpdateCamera()
+	end
+)
+
+--// =========================================================
+--// TARGET UPDATE LOOP
+--// =========================================================
+
+task.spawn(function()
+	while ScreenGui.Parent do
+		UpdateTarget()
+		task.wait(0.08)
+	end
+end)
+
+--// =========================================================
+--// AUTO SHOOT LOOP
+--// =========================================================
+
+task.spawn(function()
+	while ScreenGui.Parent do
+		UpdateAutoShoot()
+		task.wait(0.03)
+	end
+end)
+
+--// =========================================================
+--// VISUAL SAFETY LOOP
+--// =========================================================
+
+task.spawn(function()
+	while ScreenGui.Parent do
+		if CurrentTarget and not IsValidTarget(CurrentTarget) then
+			CurrentTarget = nil
+			LockedTarget = nil
+			RemoveTargetVisuals()
+		end
+
+		if Settings.ShowFOV then
+			FOVCircle.Size = UDim2.fromOffset(
+				Settings.FOVRadius * 2,
+				Settings.FOVRadius * 2
+			)
+
+			FOVCircle.Visible = true
+		else
+			FOVCircle.Visible = false
+		end
+
+		task.wait(0.1)
+	end
+end)
+
+--// =========================================================
+--// RESPAWN SAFETY
+--// =========================================================
+
+LocalPlayer.CharacterAdded:Connect(function()
+	CurrentTarget = nil
+	LockedTarget = nil
+
+	RemoveTargetVisuals()
+
+	task.wait(1)
+
+	UpdateScale()
+end)
+
+--// =========================================================
+--// LOADING ANIMATION
+--// =========================================================
+
+task.spawn(function()
+	Tween(
+		LoadingBar,
+		TweenInfo.new(0.9, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{
+			Size = UDim2.fromScale(1, 1)
+		}
+	)
+
+	task.wait(1)
+
+	Tween(
+		Loading,
+		TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{
+			BackgroundTransparency = 1
+		}
+	)
+
+	Tween(
+		LoadingTitle,
+		TweenInfo.new(0.25),
+		{
+			TextTransparency = 1
+		}
+	)
+
+	Tween(
+		LoadingSub,
+		TweenInfo.new(0.25),
+		{
+			TextTransparency = 1
+		}
+	)
+
+	task.wait(0.3)
+
+	Loading.Visible = false
+	OpenMenu()
+end)
+
+--// =========================================================
+--// INITIAL STATE
+--// =========================================================
+
+FOVCircle.Visible = Settings.ShowFOV
+Main.Visible = false
+DevButton.Visible = false
+
+print("[Kyzen Perks] " .. VERSION .. " loaded.")
+print("[Kyzen Perks] Auto Shoot ready.")
+print("[Kyzen Perks] Attack path: PlayerGui > MobileButtons > Buttons > Attack")
