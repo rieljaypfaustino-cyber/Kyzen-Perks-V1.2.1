@@ -1,0 +1,2514 @@
+--============================================================
+-- KYZEN PERKS
+-- PRIVATE DEVELOPER TEST SYSTEM
+-- V3.0.0
+-- OTHER PLAYERS ONLY
+--============================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+--============================================================
+-- SETTINGS
+--============================================================
+
+local Settings = {
+	TargetLock = false,
+	AimAssist = false,
+
+	AimSmoothness = 0.78,
+
+	FOVDetection = false,
+	FOVRadius = 150,
+
+	TargetRange = 500,
+
+	CameraStrength = 1.65,
+
+	-- How quickly Aim Assist can switch targets.
+	SwitchSpeed = 0.08,
+}
+
+local VERSION = "V3.0.0"
+
+--============================================================
+-- TARGET STATE
+--============================================================
+
+local CurrentTarget = nil
+local LockedTarget = nil
+
+local CurrentHighlight = nil
+local CurrentTargetText = nil
+
+local LastSwitch = 0
+
+--============================================================
+-- COLORS
+--============================================================
+
+local BLACK = Color3.fromRGB(7, 7, 9)
+local BG = Color3.fromRGB(11, 11, 14)
+local PANEL = Color3.fromRGB(18, 18, 22)
+local PANEL2 = Color3.fromRGB(24, 24, 29)
+
+local WHITE = Color3.fromRGB(245, 245, 250)
+local GRAY = Color3.fromRGB(160, 160, 170)
+local DARK_GRAY = Color3.fromRGB(65, 65, 75)
+
+local BLUE = Color3.fromRGB(70, 145, 255)
+local BLUE_DARK = Color3.fromRGB(30, 70, 150)
+
+local RED = Color3.fromRGB(255, 45, 55)
+
+--============================================================
+-- UTILITY
+--============================================================
+
+local function New(className, props, parent)
+	local object = Instance.new(className)
+
+	for property, value in pairs(props or {}) do
+		object[property] = value
+	end
+
+	object.Parent = parent
+
+	return object
+end
+
+local function AddCorner(object, radius)
+	return New("UICorner", {
+		CornerRadius = UDim.new(0, radius)
+	}, object)
+end
+
+local function AddStroke(object, color, thickness)
+	return New("UIStroke", {
+		Color = color,
+		Thickness = thickness or 1
+	}, object)
+end
+
+local function AddGradient(object, c1, c2)
+	return New("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, c1),
+			ColorSequenceKeypoint.new(1, c2)
+		}),
+		Rotation = 90
+	}, object)
+end
+
+local function PlayTween(object, duration, properties)
+	return TweenService:Create(
+		object,
+		TweenInfo.new(
+			duration,
+			Enum.EasingStyle.Quart,
+			Enum.EasingDirection.Out
+		),
+		properties
+	)
+end
+
+--============================================================
+-- CHARACTER FUNCTIONS
+--============================================================
+
+local function GetCharacter(player)
+	if not player then
+		return nil
+	end
+
+	if player == LocalPlayer then
+		return nil
+	end
+
+	return player.Character
+end
+
+local function GetHumanoid(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetRoot(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetHead(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("Head")
+end
+
+local function IsAlive(character)
+	local humanoid = GetHumanoid(character)
+	local root = GetRoot(character)
+	local head = GetHead(character)
+
+	if not humanoid then
+		return false
+	end
+
+	if humanoid.Health <= 0 then
+		return false
+	end
+
+	if not root then
+		return false
+	end
+
+	if not head then
+		return false
+	end
+
+	return true
+end
+
+--============================================================
+-- TARGET VALIDATION
+--============================================================
+
+local function IsValidTarget(player)
+	if not player then
+		return false
+	end
+
+	-- NEVER TARGET SELF
+	if player == LocalPlayer then
+		return false
+	end
+
+	local character = player.Character
+
+	if not character then
+		return false
+	end
+
+	if not IsAlive(character) then
+		return false
+	end
+
+	local myCharacter = LocalPlayer.Character
+
+	if not myCharacter then
+		return false
+	end
+
+	local myRoot = GetRoot(myCharacter)
+	local targetRoot = GetRoot(character)
+
+	if not myRoot or not targetRoot then
+		return false
+	end
+
+	local distance =
+		(targetRoot.Position - myRoot.Position).Magnitude
+
+	if distance > Settings.TargetRange then
+		return false
+	end
+
+	return true
+end
+
+--============================================================
+-- GET ALL OTHER PLAYERS
+--============================================================
+
+local function GetTargets()
+	local targets = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			if IsValidTarget(player) then
+				table.insert(targets, player)
+			end
+		end
+	end
+
+	return targets
+end
+
+--============================================================
+-- 3D TARGET ANGLE
+--============================================================
+
+local function GetAngleFromCamera(player)
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return math.huge
+	end
+
+	local character = GetCharacter(player)
+	local head = GetHead(character)
+
+	if not head then
+		return math.huge
+	end
+
+	local direction =
+		(head.Position - camera.CFrame.Position).Unit
+
+	local dot =
+		math.clamp(
+			camera.CFrame.LookVector:Dot(direction),
+			-1,
+			1
+		)
+
+	return math.acos(dot)
+end
+
+--============================================================
+-- DISTANCE
+--============================================================
+
+local function GetDistance(player)
+	local myCharacter = LocalPlayer.Character
+	local targetCharacter = GetCharacter(player)
+
+	local myRoot = GetRoot(myCharacter)
+	local targetRoot = GetRoot(targetCharacter)
+
+	if not myRoot or not targetRoot then
+		return math.huge
+	end
+
+	return (
+		targetRoot.Position
+		- myRoot.Position
+	).Magnitude
+end
+
+--============================================================
+-- FOV DISTANCE
+--============================================================
+
+local function GetScreenDistance(player)
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return math.huge
+	end
+
+	local character = GetCharacter(player)
+	local head = GetHead(character)
+
+	if not head then
+		return math.huge
+	end
+
+	local point =
+		camera:WorldToViewportPoint(
+			head.Position
+		)
+
+	local center =
+		Vector2.new(
+			camera.ViewportSize.X / 2,
+			camera.ViewportSize.Y / 2
+		)
+
+	return (
+		Vector2.new(
+			point.X,
+			point.Y
+		) - center
+	).Magnitude
+end
+
+--============================================================
+-- FIND NEAREST PLAYER
+--============================================================
+
+local function FindNearest()
+	local best = nil
+	local bestDistance = math.huge
+
+	for _, player in ipairs(GetTargets()) do
+		local distance = GetDistance(player)
+
+		if distance < bestDistance then
+			bestDistance = distance
+			best = player
+		end
+	end
+
+	return best
+end
+
+--============================================================
+-- FIND SMART TARGET
+--============================================================
+
+local function FindSmart()
+	local candidates = GetTargets()
+
+	if #candidates == 0 then
+		return nil
+	end
+
+	local best = nil
+	local bestScore = math.huge
+
+	for _, player in ipairs(candidates) do
+		local distance = GetDistance(player)
+		local angle = GetAngleFromCamera(player)
+
+		local score
+
+		if Settings.FOVDetection then
+
+			local screenDistance =
+				GetScreenDistance(player)
+
+			-- Players inside the FOV receive a
+			-- strong priority, but players outside
+			-- remain valid for 360-degree targeting.
+
+			if screenDistance <= Settings.FOVRadius then
+				score =
+					screenDistance
+					+ (distance * 0.02)
+			else
+				score =
+					500
+					+ screenDistance
+					+ (distance * 0.02)
+			end
+
+		else
+
+			-- TRUE 360° mode:
+			-- camera direction is NOT required.
+			-- nearest player is prioritized.
+
+			score =
+				distance
+				+ (angle * 15)
+
+		end
+
+		if score < bestScore then
+			bestScore = score
+			best = player
+		end
+	end
+
+	return best
+end
+
+--============================================================
+-- REMOVE VISUALS
+--============================================================
+
+local function RemoveTargetVisuals()
+
+	if CurrentHighlight then
+		pcall(function()
+			CurrentHighlight:Destroy()
+		end)
+
+		CurrentHighlight = nil
+	end
+
+	if CurrentTargetText then
+		pcall(function()
+			CurrentTargetText:Destroy()
+		end)
+
+		CurrentTargetText = nil
+	end
+end
+
+--============================================================
+-- RED CHARACTER HIGHLIGHT
+--============================================================
+
+local function CreateTargetHighlight(player)
+	local character = GetCharacter(player)
+
+	if not character then
+		return
+	end
+
+	local highlight =
+		Instance.new("Highlight")
+
+	highlight.Name =
+		"KyzenTargetHighlight"
+
+	highlight.Adornee =
+		character
+
+	-- VISIBLE THROUGH WALLS
+	highlight.DepthMode =
+		Enum.HighlightDepthMode.AlwaysOnTop
+
+	highlight.FillColor = RED
+
+	highlight.OutlineColor = WHITE
+
+	highlight.FillTransparency = 0.50
+
+	highlight.OutlineTransparency = 0
+
+	highlight.Parent =
+		character
+
+	CurrentHighlight = highlight
+end
+
+--============================================================
+-- TARGET TEXT ABOVE HEAD
+--============================================================
+
+local function CreateTargetText(player)
+	local character = GetCharacter(player)
+
+	if not character then
+		return
+	end
+
+	local head = GetHead(character)
+
+	if not head then
+		return
+	end
+
+	local billboard =
+		Instance.new("BillboardGui")
+
+	billboard.Name =
+		"KyzenTargetText"
+
+	billboard.Adornee =
+		head
+
+	billboard.Size =
+		UDim2.fromOffset(240, 60)
+
+	billboard.StudsOffset =
+		Vector3.new(0, 3.5, 0)
+
+	billboard.AlwaysOnTop = true
+
+	billboard.MaxDistance = 10000
+
+	billboard.Parent =
+		head
+
+	local targetLabel =
+		Instance.new("TextLabel")
+
+	targetLabel.BackgroundTransparency = 1
+
+	targetLabel.Size =
+		UDim2.new(1, 0, 0, 25)
+
+	targetLabel.Text =
+		"TARGET"
+
+	targetLabel.TextColor3 =
+		RED
+
+	targetLabel.TextStrokeColor3 =
+		Color3.new(0, 0, 0)
+
+	targetLabel.TextStrokeTransparency = 0
+
+	targetLabel.Font =
+		Enum.Font.GothamBlack
+
+	targetLabel.TextSize = 17
+
+	targetLabel.Parent =
+		billboard
+
+	local nameLabel =
+		Instance.new("TextLabel")
+
+	nameLabel.BackgroundTransparency = 1
+
+	nameLabel.Position =
+		UDim2.fromOffset(0, 26)
+
+	nameLabel.Size =
+		UDim2.new(1, 0, 0, 25)
+
+	nameLabel.Text =
+		player.DisplayName
+		.. "  @"
+		.. player.Name
+
+	nameLabel.TextColor3 =
+		WHITE
+
+	nameLabel.TextStrokeColor3 =
+		Color3.new(0, 0, 0)
+
+	nameLabel.TextStrokeTransparency = 0
+
+	nameLabel.Font =
+		Enum.Font.GothamBold
+
+	nameLabel.TextSize = 13
+
+	nameLabel.Parent =
+		billboard
+
+	CurrentTargetText =
+		billboard
+end
+
+--============================================================
+-- APPLY TARGET VISUALS
+--============================================================
+
+local function ApplyTargetVisuals()
+
+	RemoveTargetVisuals()
+
+	if not CurrentTarget then
+		return
+	end
+
+	if CurrentTarget == LocalPlayer then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return
+	end
+
+	-- AUTOMATIC - NO ESP TOGGLES
+	CreateTargetHighlight(CurrentTarget)
+	CreateTargetText(CurrentTarget)
+end
+
+--============================================================
+-- SET TARGET
+--============================================================
+
+local function SetTarget(player)
+
+	if player == LocalPlayer then
+		return
+	end
+
+	if player and not IsValidTarget(player) then
+		return
+	end
+
+	if CurrentTarget == player then
+		return
+	end
+
+	CurrentTarget = player
+
+	ApplyTargetVisuals()
+end
+
+--============================================================
+-- TARGET LOCK ACQUISITION
+--============================================================
+
+local function AcquireTarget()
+
+	if LockedTarget
+		and IsValidTarget(LockedTarget) then
+
+		return LockedTarget
+	end
+
+	local target =
+		FindSmart()
+
+	if target
+		and target ~= LocalPlayer then
+
+		LockedTarget = target
+
+		return target
+	end
+
+	return nil
+end
+
+--============================================================
+-- AIM ASSIST TARGET
+--============================================================
+
+local function AcquireAimAssistTarget()
+
+	local now = os.clock()
+
+	if now - LastSwitch < Settings.SwitchSpeed then
+		return CurrentTarget
+	end
+
+	local target =
+		FindSmart()
+
+	if not target then
+		return nil
+	end
+
+	LastSwitch = now
+
+	return target
+end
+
+--============================================================
+-- UPDATE TARGET SYSTEM
+--============================================================
+
+local function UpdateTargetSystem()
+
+	if not Settings.TargetLock
+		and not Settings.AimAssist then
+
+		if CurrentTarget then
+			CurrentTarget = nil
+			LockedTarget = nil
+			RemoveTargetVisuals()
+		end
+
+		return
+	end
+
+	--========================================================
+	-- TARGET LOCK
+	--========================================================
+
+	if Settings.TargetLock then
+
+		local target =
+			AcquireTarget()
+
+		if target then
+			SetTarget(target)
+			return
+		end
+	end
+
+	--========================================================
+	-- AIM ASSIST
+	--========================================================
+
+	if Settings.AimAssist then
+
+		local target =
+			AcquireAimAssistTarget()
+
+		if target then
+			SetTarget(target)
+			return
+		end
+	end
+
+end
+
+--============================================================
+-- CAMERA LOCK
+--============================================================
+
+local function UpdateCamera(deltaTime)
+
+	if not Settings.TargetLock
+		and not Settings.AimAssist then
+
+		return
+	end
+
+	local target =
+		CurrentTarget
+
+	if not target then
+		return
+	end
+
+	if target == LocalPlayer then
+
+		CurrentTarget = nil
+		LockedTarget = nil
+		RemoveTargetVisuals()
+
+		return
+	end
+
+	if not IsValidTarget(target) then
+
+		if LockedTarget == target then
+			LockedTarget = nil
+		end
+
+		SetTarget(nil)
+
+		return
+	end
+
+	local character =
+		GetCharacter(target)
+
+	local head =
+		GetHead(character)
+
+	if not head then
+		return
+	end
+
+	local camera =
+		workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	--========================================================
+	-- CAMERA ALWAYS LOOKS AT TARGET HEAD
+	--========================================================
+
+	local cameraPosition =
+		camera.CFrame.Position
+
+	local targetPosition =
+		head.Position
+
+	local desired =
+		CFrame.lookAt(
+			cameraPosition,
+			targetPosition
+		)
+
+	-- FAST + SMOOTH
+	local strength =
+		math.clamp(
+			Settings.AimSmoothness
+			* Settings.CameraStrength
+			* 18,
+			3,
+			35
+		)
+
+	local alpha =
+		1 - math.exp(
+			-strength
+			* math.max(
+				deltaTime,
+				1 / 240
+			)
+		)
+
+	camera.CFrame =
+		camera.CFrame:Lerp(
+			desired,
+			alpha
+		)
+end
+
+--============================================================
+-- GUI
+--============================================================
+
+local ScreenGui =
+	New("ScreenGui", {
+		Name = "KyzenPerks",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior =
+			Enum.ZIndexBehavior.Sibling
+	}, PlayerGui)
+
+--============================================================
+-- SCALE
+--============================================================
+
+local UIScale =
+	New("UIScale", {
+		Scale = 1
+	}, ScreenGui)
+
+local function UpdateScale()
+
+	local camera =
+		workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	local viewport =
+		camera.ViewportSize
+
+	local scaleX =
+		viewport.X / 900
+
+	local scaleY =
+		viewport.Y / 650
+
+	local scale =
+		math.min(
+			scaleX,
+			scaleY
+		)
+
+	UIScale.Scale =
+		math.clamp(
+			scale,
+			0.68,
+			1.05
+		)
+end
+
+UpdateScale()
+
+workspace.CurrentCamera:
+	GetPropertyChangedSignal("ViewportSize"):
+	Connect(UpdateScale)
+
+--============================================================
+-- FOV CIRCLE
+--============================================================
+
+local FOVCircle =
+	New("Frame", {
+		Name = "FOV",
+
+		AnchorPoint =
+			Vector2.new(0.5, 0.5),
+
+		Position =
+			UDim2.fromScale(
+				0.5,
+				0.5
+			),
+
+		Size =
+			UDim2.fromOffset(
+				Settings.FOVRadius * 2,
+				Settings.FOVRadius * 2
+			),
+
+		BackgroundTransparency = 1,
+
+		Visible = false,
+
+		ZIndex = 2
+	}, ScreenGui)
+
+AddCorner(
+	FOVCircle,
+	999
+)
+
+AddStroke(
+	FOVCircle,
+	BLUE,
+	2
+)
+
+local function UpdateFOV()
+
+	FOVCircle.Visible =
+		Settings.FOVDetection
+
+	FOVCircle.Size =
+		UDim2.fromOffset(
+			Settings.FOVRadius * 2,
+			Settings.FOVRadius * 2
+		)
+end
+
+--============================================================
+-- MAIN FRAME
+--============================================================
+
+local Main =
+	New("Frame", {
+
+		Name = "Main",
+
+		AnchorPoint =
+			Vector2.new(
+				0.5,
+				0.5
+			),
+
+		Position =
+			UDim2.fromScale(
+				0.5,
+				0.5
+			),
+
+		Size =
+			UDim2.fromOffset(
+				700,
+				470
+			),
+
+		BackgroundColor3 =
+			BG,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 10
+
+	}, ScreenGui)
+
+AddCorner(Main, 16)
+
+AddStroke(
+	Main,
+	BLUE,
+	2
+)
+
+AddGradient(
+	Main,
+	Color3.fromRGB(20, 20, 27),
+	Color3.fromRGB(7, 7, 10)
+)
+
+--============================================================
+-- HEADER
+--============================================================
+
+local Header =
+	New("Frame", {
+
+		Size =
+			UDim2.new(
+				1,
+				0,
+				0,
+				72
+			),
+
+		BackgroundTransparency = 1,
+
+		ZIndex = 11
+
+	}, Main)
+
+New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				25,
+				12
+			),
+
+		Size =
+			UDim2.fromOffset(
+				450,
+				32
+			),
+
+		BackgroundTransparency = 1,
+
+		Text =
+			"KYZEN PERKS",
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamBlack,
+
+		TextSize = 23,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 12
+
+}, Header)
+
+New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				27,
+				43
+			),
+
+		Size =
+			UDim2.fromOffset(
+				450,
+				18
+			),
+
+		BackgroundTransparency = 1,
+
+		Text =
+			"PRIVATE TEST  •  "
+			.. VERSION,
+
+		TextColor3 =
+			GRAY,
+
+		Font =
+			Enum.Font.GothamMedium,
+
+		TextSize = 10,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 12
+
+}, Header)
+
+local Close =
+	New("TextButton", {
+
+		Position =
+			UDim2.new(
+				1,
+				-58,
+				0,
+				18
+			),
+
+		Size =
+			UDim2.fromOffset(
+				38,
+				38
+			),
+
+		BackgroundColor3 =
+			PANEL2,
+
+		Text = "×",
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamBold,
+
+		TextSize = 24,
+
+		AutoButtonColor = false,
+
+		ZIndex = 20
+
+	}, Header)
+
+AddCorner(Close, 10)
+
+AddStroke(
+	Close,
+	RED,
+	1.5
+)
+
+--============================================================
+-- SIDEBAR
+--============================================================
+
+local Sidebar =
+	New("Frame", {
+
+		Position =
+			UDim2.fromOffset(
+				16,
+				82
+			),
+
+		Size =
+			UDim2.fromOffset(
+				165,
+				365
+			),
+
+		BackgroundColor3 =
+			PANEL,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 11
+
+	}, Main)
+
+AddCorner(
+	Sidebar,
+	12
+)
+
+AddStroke(
+	Sidebar,
+	Color3.fromRGB(
+		45,
+		45,
+		55
+	),
+	1
+)
+
+local Content =
+	New("Frame", {
+
+		Position =
+			UDim2.fromOffset(
+				195,
+				82
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-215,
+				1,
+				-102
+			),
+
+		BackgroundColor3 =
+			PANEL,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 11
+
+	}, Main)
+
+AddCorner(
+	Content,
+	12
+)
+
+AddStroke(
+	Content,
+	Color3.fromRGB(
+		45,
+		45,
+		55
+	),
+	1
+)
+
+--============================================================
+-- PAGES
+--============================================================
+
+local Pages = {}
+
+local function CreatePage(name)
+
+	local page =
+		New("Frame", {
+
+			Name = name,
+
+			Size =
+				UDim2.fromScale(
+					1,
+					1
+				),
+
+			BackgroundTransparency = 1,
+
+			Visible = false,
+
+			ZIndex = 12
+
+		}, Content)
+
+	Pages[name] = page
+
+	return page
+end
+
+local AimPage =
+	CreatePage("Aim")
+
+local SettingsPage =
+	CreatePage("Settings")
+
+local InfoPage =
+	CreatePage("Info")
+
+--============================================================
+-- PAGE SWITCHING
+--============================================================
+
+local function ShowPage(name)
+
+	for pageName, page in pairs(Pages) do
+		page.Visible =
+			pageName == name
+	end
+
+	for _, object in ipairs(
+		Sidebar:GetChildren()
+	) do
+
+		if object:IsA("TextButton") then
+
+			if object:GetAttribute("Page")
+				== name then
+
+				object.BackgroundColor3 =
+					Color3.fromRGB(
+						35,
+						75,
+						125
+					)
+
+				object.TextColor3 =
+					WHITE
+
+			else
+
+				object.BackgroundColor3 =
+					Color3.fromRGB(
+						25,
+						25,
+						30
+					)
+
+				object.TextColor3 =
+					GRAY
+			end
+		end
+	end
+end
+
+local function CreateTab(
+	text,
+	y,
+	page
+)
+
+	local button =
+		New("TextButton", {
+
+			Position =
+				UDim2.fromOffset(
+					10,
+					y
+				),
+
+			Size =
+				UDim2.new(
+					1,
+					-20,
+					0,
+					48
+				),
+
+			BackgroundColor3 =
+				Color3.fromRGB(
+					25,
+					25,
+					30
+				),
+
+			Text = text,
+
+			TextColor3 =
+				GRAY,
+
+			Font =
+				Enum.Font.GothamBold,
+
+			TextSize = 11,
+
+			AutoButtonColor = false,
+
+			ZIndex = 13
+
+		}, Sidebar)
+
+	button:SetAttribute(
+		"Page",
+		page
+	)
+
+	AddCorner(button, 9)
+
+	button.MouseButton1Click:Connect(
+		function()
+			ShowPage(page)
+		end
+	)
+end
+
+CreateTab(
+	"AIM & TARGET",
+	12,
+	"Aim"
+)
+
+CreateTab(
+	"SETTINGS",
+	68,
+	"Settings"
+)
+
+CreateTab(
+	"INFO & CREDIT",
+	124,
+	"Info"
+)
+
+--============================================================
+-- PAGE HEADERS
+--============================================================
+
+local function PageHeader(
+	parent,
+	title,
+	description
+)
+
+	New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				20,
+				17
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-40,
+				0,
+				28
+			),
+
+		BackgroundTransparency = 1,
+
+		Text = title,
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamBlack,
+
+		TextSize = 19,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 13
+
+	}, parent)
+
+	New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				20,
+				46
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-40,
+				0,
+				20
+			),
+
+		BackgroundTransparency = 1,
+
+		Text = description,
+
+		TextColor3 =
+			GRAY,
+
+		Font =
+			Enum.Font.GothamMedium,
+
+		TextSize = 10,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 13
+
+	}, parent)
+end
+
+PageHeader(
+	AimPage,
+	"TARGET CONTROL",
+	"Fast smooth Head tracking for other players"
+)
+
+PageHeader(
+	SettingsPage,
+	"TARGET SETTINGS",
+	"FOV and targeting configuration"
+)
+
+PageHeader(
+	InfoPage,
+	"KYZEN PERKS",
+	"Private developer testing system"
+)
+
+--============================================================
+-- TOGGLE CREATOR
+--============================================================
+
+local function CreateToggle(
+	parent,
+	text,
+	y,
+	getValue,
+	setValue
+)
+
+	local holder =
+		New("Frame", {
+
+			Position =
+				UDim2.fromOffset(
+					20,
+					y
+				),
+
+			Size =
+				UDim2.new(
+					1,
+					-40,
+					0,
+					55
+				),
+
+			BackgroundColor3 =
+				PANEL2,
+
+			BorderSizePixel = 0,
+
+			ZIndex = 13
+
+		}, parent)
+
+	AddCorner(holder, 10)
+
+	AddStroke(
+		holder,
+		Color3.fromRGB(
+			45,
+			45,
+			55
+		),
+		1
+	)
+
+	New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				14,
+				0
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-90,
+				1,
+				0
+			),
+
+		BackgroundTransparency = 1,
+
+		Text = text,
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamBold,
+
+		TextSize = 12,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 14
+
+	}, holder)
+
+	local button =
+		New("TextButton", {
+
+			Position =
+				UDim2.new(
+					1,
+					-65,
+					0.5,
+					-14
+				),
+
+			Size =
+				UDim2.fromOffset(
+					50,
+					28
+				),
+
+			BackgroundColor3 =
+				DARK_GRAY,
+
+			Text = "",
+
+			AutoButtonColor = false,
+
+			ZIndex = 15
+
+		}, holder)
+
+	AddCorner(
+		button,
+		999
+	)
+
+	local knob =
+		New("Frame", {
+
+			Position =
+				UDim2.fromOffset(
+					3,
+					3
+				),
+
+			Size =
+				UDim2.fromOffset(
+					22,
+					22
+				),
+
+			BackgroundColor3 =
+				WHITE,
+
+			BorderSizePixel = 0,
+
+			ZIndex = 16
+
+		}, button)
+
+	AddCorner(
+		knob,
+		999
+	)
+
+	local function Refresh()
+
+		if getValue() then
+
+			PlayTween(
+				button,
+				0.12,
+				{
+					BackgroundColor3 =
+						BLUE
+				}
+			):Play()
+
+			PlayTween(
+				knob,
+				0.12,
+				{
+					Position =
+						UDim2.new(
+							1,
+							-25,
+							0,
+							3
+						)
+				}
+			):Play()
+
+		else
+
+			PlayTween(
+				button,
+				0.12,
+				{
+					BackgroundColor3 =
+						DARK_GRAY
+				}
+			):Play()
+
+			PlayTween(
+				knob,
+				0.12,
+				{
+					Position =
+						UDim2.fromOffset(
+							3,
+							3
+						)
+				}
+			):Play()
+
+		end
+	end
+
+	button.MouseButton1Click:Connect(
+		function()
+
+			setValue(
+				not getValue()
+			)
+
+			Refresh()
+
+			UpdateTargetSystem()
+
+		end
+	)
+
+	Refresh()
+end
+
+--============================================================
+-- AIM PAGE
+--============================================================
+
+CreateToggle(
+	AimPage,
+	"TARGET LOCK",
+	82,
+
+	function()
+		return Settings.TargetLock
+	end,
+
+	function(value)
+
+		Settings.TargetLock =
+			value
+
+		if value then
+
+			Settings.AimAssist = false
+
+			LockedTarget =
+				FindSmart()
+
+			if LockedTarget then
+				SetTarget(
+					LockedTarget
+				)
+			end
+
+		else
+
+			LockedTarget = nil
+
+			if not Settings.AimAssist then
+				SetTarget(nil)
+			end
+		end
+	end
+)
+
+CreateToggle(
+	AimPage,
+	"AIM ASSIST",
+	145,
+
+	function()
+		return Settings.AimAssist
+	end,
+
+	function(value)
+
+		Settings.AimAssist =
+			value
+
+		if value then
+
+			Settings.TargetLock = false
+			LockedTarget = nil
+
+			local target =
+				FindSmart()
+
+			if target then
+				SetTarget(target)
+			end
+
+		elseif not Settings.TargetLock then
+
+			SetTarget(nil)
+
+		end
+	end
+)
+
+--============================================================
+-- SETTINGS
+--============================================================
+
+CreateToggle(
+	SettingsPage,
+	"FOV DETECTION",
+	82,
+
+	function()
+		return Settings.FOVDetection
+	end,
+
+	function(value)
+
+		Settings.FOVDetection =
+			value
+
+		UpdateFOV()
+
+	end
+)
+
+--============================================================
+-- FOV SIZE
+--============================================================
+
+local FOVPanel =
+	New("Frame", {
+
+		Position =
+			UDim2.fromOffset(
+				20,
+				145
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-40,
+				85,
+				0
+			),
+
+		BackgroundColor3 =
+			PANEL2,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 13
+
+	}, SettingsPage)
+
+AddCorner(
+	FOVPanel,
+	10
+)
+
+AddStroke(
+	FOVPanel,
+	Color3.fromRGB(
+		45,
+		45,
+		55
+	),
+	1
+)
+
+New("TextLabel", {
+
+	Position =
+		UDim2.fromOffset(
+			14,
+			9
+		),
+
+	Size =
+		UDim2.fromOffset(
+			150,
+			20
+		),
+
+		BackgroundTransparency = 1,
+
+		Text =
+			"FOV SIZE",
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamBold,
+
+		TextSize = 12,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		ZIndex = 14
+
+}, FOVPanel)
+
+local FOVValue =
+	New("TextLabel", {
+
+		Position =
+			UDim2.new(
+				1,
+				-70,
+				0,
+				9
+			),
+
+		Size =
+			UDim2.fromOffset(
+				55,
+				20
+			),
+
+		BackgroundTransparency = 1,
+
+		Text =
+			tostring(
+				Settings.FOVRadius
+			),
+
+		TextColor3 =
+			BLUE,
+
+		Font =
+			Enum.Font.GothamBlack,
+
+		TextSize = 12,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Right,
+
+		ZIndex = 14
+
+	}, FOVPanel)
+
+local FOVBar =
+	New("Frame", {
+
+		Position =
+			UDim2.fromOffset(
+				14,
+				48
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-28,
+				0,
+				6
+			),
+
+		BackgroundColor3 =
+			Color3.fromRGB(
+				50,
+				50,
+				60
+			),
+
+		BorderSizePixel = 0,
+
+		ZIndex = 14
+
+	}, FOVPanel)
+
+AddCorner(
+	FOVBar,
+	999
+)
+
+local FOVFill =
+	New("Frame", {
+
+		Size =
+			UDim2.fromScale(
+				0.30,
+				1
+			),
+
+		BackgroundColor3 =
+			BLUE,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 15
+
+	}, FOVBar)
+
+AddCorner(
+	FOVFill,
+	999
+)
+
+local FOVButton =
+	New("TextButton", {
+
+		Position =
+			UDim2.fromOffset(
+				0,
+				-10
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				0,
+				1,
+				20
+			),
+
+		BackgroundTransparency = 1,
+
+		Text = "",
+
+		AutoButtonColor = false,
+
+		ZIndex = 20
+
+	}, FOVBar)
+
+local fovDragging = false
+
+local function UpdateFOVFromInput(x)
+
+	local relative =
+		math.clamp(
+			(
+				x
+				- FOVBar.AbsolutePosition.X
+			)
+			/ FOVBar.AbsoluteSize.X,
+			0,
+			1
+		)
+
+	local value =
+		math.floor(
+			50
+			+ (
+				relative
+				* 350
+			)
+		)
+
+	Settings.FOVRadius =
+		value
+
+	FOVValue.Text =
+		tostring(value)
+
+	FOVFill.Size =
+		UDim2.fromScale(
+			relative,
+			1
+		)
+
+	UpdateFOV()
+end
+
+FOVButton.InputBegan:Connect(
+	function(input)
+
+		if input.UserInputType ==
+			Enum.UserInputType.MouseButton1
+			or input.UserInputType ==
+			Enum.UserInputType.Touch then
+
+			fovDragging = true
+
+			UpdateFOVFromInput(
+				input.Position.X
+			)
+		end
+	end
+)
+
+UserInputService.InputChanged:Connect(
+	function(input)
+
+		if not fovDragging then
+			return
+		end
+
+		if input.UserInputType ==
+			Enum.UserInputType.MouseMovement
+			or input.UserInputType ==
+			Enum.UserInputType.Touch then
+
+			UpdateFOVFromInput(
+				input.Position.X
+			)
+		end
+	end
+)
+
+UserInputService.InputEnded:Connect(
+	function(input)
+
+		if input.UserInputType ==
+			Enum.UserInputType.MouseButton1
+			or input.UserInputType ==
+			Enum.UserInputType.Touch then
+
+			fovDragging = false
+		end
+	end
+)
+
+--============================================================
+-- INFO
+--============================================================
+
+local Info =
+	New("TextLabel", {
+
+		Position =
+			UDim2.fromOffset(
+				20,
+				85
+			),
+
+		Size =
+			UDim2.new(
+				1,
+				-40,
+				1,
+				-105
+			),
+
+		BackgroundColor3 =
+			PANEL2,
+
+		Text = [[
+⚡ KYZEN PERKS
+
+PRIVATE DEVELOPER TEST SYSTEM
+
+Developer:
+KyzenDevs
+
+TARGET:
+OTHER PLAYERS ONLY
+
+AIM POINT:
+HEAD
+
+TARGET SYSTEM:
+• Target Lock
+• Aim Assist
+• Fast Smooth Switching
+• 360° Target Acquisition
+• FOV Detection
+• Automatic Red Character Highlight
+• Automatic Target Text
+• Through-Wall Target Visual
+• Continuous Head Tracking
+
+ESP visuals are automatic.
+There are no ESP ON/OFF controls.
+
+Version ]] .. VERSION,
+
+		TextColor3 =
+			WHITE,
+
+		Font =
+			Enum.Font.GothamMedium,
+
+		TextSize = 12,
+
+		TextWrapped = true,
+
+		TextXAlignment =
+			Enum.TextXAlignment.Left,
+
+		TextYAlignment =
+			Enum.TextYAlignment.Top,
+
+		ZIndex = 13
+
+	}, InfoPage)
+
+AddCorner(
+	Info,
+	10
+)
+
+AddStroke(
+	Info,
+	Color3.fromRGB(
+		45,
+		45,
+		55
+	),
+	1
+)
+
+--============================================================
+-- DRAG SYSTEM
+--============================================================
+
+local function MakeDraggable(
+	object,
+	handle
+)
+
+	local dragging = false
+	local dragStart
+	local startPosition
+
+	handle.InputBegan:Connect(
+		function(input)
+
+			if input.UserInputType ==
+				Enum.UserInputType.MouseButton1
+				or input.UserInputType ==
+				Enum.UserInputType.Touch then
+
+				dragging = true
+
+				dragStart =
+					input.Position
+
+				startPosition =
+					object.Position
+			end
+		end
+	)
+
+	UserInputService.InputChanged:Connect(
+		function(input)
+
+			if not dragging then
+				return
+			end
+
+			if input.UserInputType ==
+				Enum.UserInputType.MouseMovement
+				or input.UserInputType ==
+				Enum.UserInputType.Touch then
+
+				local delta =
+					input.Position
+					- dragStart
+
+				object.Position =
+					UDim2.new(
+
+						startPosition.X.Scale,
+
+						startPosition.X.Offset
+							+ delta.X,
+
+						startPosition.Y.Scale,
+
+						startPosition.Y.Offset
+							+ delta.Y
+					)
+			end
+		end
+	)
+
+	UserInputService.InputEnded:Connect(
+		function(input)
+
+			if input.UserInputType ==
+				Enum.UserInputType.MouseButton1
+				or input.UserInputType ==
+				Enum.UserInputType.Touch then
+
+				dragging = false
+			end
+		end
+	)
+end
+
+MakeDraggable(
+	Main,
+	Header
+)
+
+--============================================================
+-- DEV IMAGE BUTTON
+--============================================================
+
+local DevButton =
+	New("ImageButton", {
+
+		Name =
+			"DevToggle",
+
+		Position =
+			UDim2.new(
+				0,
+				25,
+				0.5,
+				-32
+			),
+
+		Size =
+			UDim2.fromOffset(
+				65,
+				65
+			),
+
+		BackgroundColor3 =
+			BLACK,
+
+		BackgroundTransparency = 0.05,
+
+		Image =
+			"rbxassetid://129427980084843",
+
+		ScaleType =
+			Enum.ScaleType.Fit,
+
+		AutoButtonColor = false,
+
+		ZIndex = 50
+
+	}, ScreenGui)
+
+AddCorner(
+	DevButton,
+	16
+)
+
+AddStroke(
+	DevButton,
+	BLUE,
+	2
+)
+
+MakeDraggable(
+	DevButton,
+	DevButton
+)
+
+--============================================================
+-- OPEN / CLOSE
+--============================================================
+
+local MenuOpen = true
+
+local function OpenMenu()
+
+	MenuOpen = true
+
+	Main.Visible = true
+
+	Main.Size =
+		UDim2.fromOffset(
+			640,
+			430
+		)
+
+	PlayTween(
+		Main,
+		0.18,
+		{
+			Size =
+				UDim2.fromOffset(
+					700,
+					470
+				)
+		}
+	):Play()
+end
+
+local function CloseMenu()
+
+	MenuOpen = false
+
+	PlayTween(
+		Main,
+		0.16,
+		{
+			Size =
+				UDim2.fromOffset(
+					640,
+					430
+				)
+		}
+	):Play()
+
+	task.delay(
+		0.16,
+		function()
+
+			if not MenuOpen then
+				Main.Visible = false
+			end
+
+		end
+	)
+end
+
+DevButton.MouseButton1Click:Connect(
+	function()
+
+		if MenuOpen then
+			CloseMenu()
+		else
+			OpenMenu()
+		end
+
+	end
+)
+
+Close.MouseButton1Click:Connect(
+	function()
+		CloseMenu()
+	end
+)
+
+--============================================================
+-- PLAYER REMOVAL
+--============================================================
+
+Players.PlayerRemoving:Connect(
+	function(player)
+
+		if player == CurrentTarget
+			or player == LockedTarget then
+
+			CurrentTarget = nil
+			LockedTarget = nil
+
+			RemoveTargetVisuals()
+		end
+	end
+)
+
+--============================================================
+-- LOCAL PLAYER RESPAWN
+--============================================================
+
+LocalPlayer.CharacterAdded:Connect(
+	function()
+
+		CurrentTarget = nil
+		LockedTarget = nil
+
+		RemoveTargetVisuals()
+	end
+)
+
+--============================================================
+-- TARGET LOOP
+--============================================================
+
+task.spawn(
+	function()
+
+		while ScreenGui.Parent do
+
+			UpdateTargetSystem()
+
+			task.wait(0.025)
+
+		end
+	end
+)
+
+--============================================================
+-- CAMERA LOOP
+--============================================================
+
+RunService:BindToRenderStep(
+	"KyzenPerksCamera",
+
+	Enum.RenderPriority.Camera.Value + 100,
+
+	function(deltaTime)
+
+		if not ScreenGui.Parent then
+			return
+		end
+
+		UpdateCamera(deltaTime)
+	end
+)
+
+--============================================================
+-- VISUAL SAFETY LOOP
+--============================================================
+
+task.spawn(
+	function()
+
+		while ScreenGui.Parent do
+
+			if CurrentTarget then
+
+				if CurrentTarget == LocalPlayer then
+
+					CurrentTarget = nil
+					LockedTarget = nil
+
+					RemoveTargetVisuals()
+
+				elseif not IsValidTarget(
+					CurrentTarget
+				) then
+
+					if LockedTarget ==
+						CurrentTarget then
+
+						LockedTarget = nil
+					end
+
+					SetTarget(nil)
+
+				else
+
+					if not CurrentHighlight then
+						ApplyTargetVisuals()
+					end
+
+					if not CurrentTargetText then
+						ApplyTargetVisuals()
+					end
+				end
+			end
+
+			task.wait(0.10)
+		end
+	end
+)
+
+--============================================================
+-- INITIALIZE
+--============================================================
+
+UpdateFOV()
+
+ShowPage("Aim")
+
+print(
+	"[Kyzen Perks "
+	.. VERSION
+	.. "] Loaded | Other Players Only | Head Target"
+)
