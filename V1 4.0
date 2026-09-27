@@ -1,0 +1,2942 @@
+--========================================================
+-- KYZEN PERKS
+-- PRIVATE DEVELOPER TEST SYSTEM
+-- V1.4.0
+-- BLUE + RED PREMIUM EDITION
+-- ONE LOCAL SCRIPT
+--========================================================
+
+--========================================================
+-- SERVICES
+--========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+
+--========================================================
+-- SETTINGS
+--========================================================
+
+local Settings = {
+
+	-- Target
+	TargetLock = false,
+	AimAssist = false,
+
+	AimSmoothness = 0.18,
+
+	TargetMode = "SMART",
+	TargetRange = 250,
+
+	-- FOV
+	ShowFOV = false,
+	FOVRadius = 145,
+
+	-- Camera
+	CameraSpeed = 1,
+
+	-- Auto Shoot
+	AutoShoot = false,
+	AutoShootCooldown = 0.12,
+
+	-- Visuals
+	TargetHighlight = true,
+	TargetBillboard = true,
+
+}
+
+local VERSION = "V1.4.0"
+
+local DISCORD_INVITE = "discord.gg/yourserver"
+
+--========================================================
+-- COLORS
+--========================================================
+
+local COLORS = {
+
+	Background = Color3.fromRGB(10, 12, 18),
+	Panel = Color3.fromRGB(15, 18, 27),
+	Panel2 = Color3.fromRGB(20, 23, 34),
+
+	Blue = Color3.fromRGB(45, 125, 255),
+	BlueLight = Color3.fromRGB(85, 160, 255),
+
+	Red = Color3.fromRGB(235, 55, 70),
+	RedLight = Color3.fromRGB(255, 85, 95),
+
+	White = Color3.fromRGB(245, 247, 255),
+	Gray = Color3.fromRGB(165, 170, 185),
+	DarkGray = Color3.fromRGB(75, 80, 95),
+
+	Green = Color3.fromRGB(60, 220, 130),
+
+	Stroke = Color3.fromRGB(55, 62, 80),
+
+}
+
+--========================================================
+-- UTILITY
+--========================================================
+
+local function New(className, properties, parent)
+
+	local object = Instance.new(className)
+
+	for property, value in pairs(properties or {}) do
+		object[property] = value
+	end
+
+	if parent then
+		object.Parent = parent
+	end
+
+	return object
+end
+
+local function AddCorner(object, radius)
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.Parent = object
+
+	return corner
+end
+
+local function AddStroke(object, color, thickness, transparency)
+
+	local stroke = Instance.new("UIStroke")
+
+	stroke.Color = color or COLORS.Stroke
+	stroke.Thickness = thickness or 1
+	stroke.Transparency = transparency or 0
+
+	stroke.Parent = object
+
+	return stroke
+end
+
+local function AddGradient(object, color1, color2, rotation)
+
+	local gradient = Instance.new("UIGradient")
+
+	gradient.Color = ColorSequence.new({
+
+		ColorSequenceKeypoint.new(0, color1),
+		ColorSequenceKeypoint.new(1, color2),
+
+	})
+
+	gradient.Rotation = rotation or 90
+
+	gradient.Parent = object
+
+	return gradient
+end
+
+local function Tween(object, duration, properties, style, direction)
+
+	local info = TweenInfo.new(
+		duration or 0.25,
+		style or Enum.EasingStyle.Quint,
+		direction or Enum.EasingDirection.Out
+	)
+
+	local tween = TweenService:Create(object, info, properties)
+
+	tween:Play()
+
+	return tween
+end
+
+local function IsAlive(character)
+
+	if not character then
+		return false
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid then
+		return false
+	end
+
+	return humanoid.Health > 0
+end
+
+local function GetCharacterRoot(character)
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("UpperTorso")
+		or character:FindFirstChild("Torso")
+end
+
+local function GetTargetPart(character)
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("Head")
+		or character:FindFirstChild("UpperTorso")
+		or character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("Torso")
+end
+
+--========================================================
+-- GUI ROOT
+--========================================================
+
+local OldGui = PlayerGui:FindFirstChild("PrivateTestSystem")
+
+if OldGui then
+	OldGui:Destroy()
+end
+
+local ScreenGui = New(
+	"ScreenGui",
+	{
+		Name = "PrivateTestSystem",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		IgnoreGuiInset = true,
+	},
+	PlayerGui
+)
+
+--========================================================
+-- RESPONSIVE SCALE
+--========================================================
+
+local UIScale = New(
+	"UIScale",
+	{
+		Scale = 1,
+	},
+	ScreenGui
+)
+
+local function UpdateScale()
+
+	local viewport = Camera.ViewportSize
+
+	local scale = math.clamp(
+		math.min(viewport.X / 900, viewport.Y / 620),
+		0.72,
+		1.12
+	)
+
+	UIScale.Scale = scale
+end
+
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
+
+UpdateScale()
+
+--========================================================
+-- FOV
+--========================================================
+
+local FOVCircle = New(
+	"Frame",
+	{
+		Name = "FOVCircle",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(Settings.FOVRadius * 2, Settings.FOVRadius * 2),
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 3,
+	},
+	ScreenGui
+)
+
+AddCorner(FOVCircle, 999)
+
+AddStroke(
+	FOVCircle,
+	COLORS.Blue,
+	1.5,
+	0.2
+)
+
+--========================================================
+-- DEV BUTTON
+--========================================================
+
+local DevButton = New(
+	"ImageButton",
+	{
+		Name = "DEV",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 18, 1, -18),
+		Size = UDim2.fromOffset(48, 48),
+
+		BackgroundColor3 = COLORS.Panel,
+		BackgroundTransparency = 0.05,
+
+		Image = "rbxassetid://129427980084843",
+
+		AutoButtonColor = false,
+
+		ZIndex = 20,
+	},
+	ScreenGui
+)
+
+AddCorner(DevButton, 12)
+
+AddStroke(
+	DevButton,
+	COLORS.Blue,
+	1.5,
+	0
+)
+
+--========================================================
+-- MAIN FRAME
+--========================================================
+
+local MainFrame = New(
+	"Frame",
+	{
+		Name = "MainFrame",
+
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+
+		Size = UDim2.fromOffset(820, 530),
+
+		BackgroundColor3 = COLORS.Background,
+
+		Visible = false,
+
+		ZIndex = 10,
+	},
+	ScreenGui
+)
+
+AddCorner(MainFrame, 14)
+
+AddStroke(
+	MainFrame,
+	COLORS.Blue,
+	1.5,
+	0.05
+)
+
+AddGradient(
+	MainFrame,
+	Color3.fromRGB(13, 17, 28),
+	Color3.fromRGB(8, 10, 16),
+	90
+)
+
+--========================================================
+-- TOP HEADER
+--========================================================
+
+local Header = New(
+	"Frame",
+	{
+		Name = "Header",
+
+		Size = UDim2.new(1, 0, 0, 68),
+
+		BackgroundTransparency = 1,
+
+		ZIndex = 11,
+	},
+	MainFrame
+)
+
+local HeaderLine = New(
+	"Frame",
+	{
+		Name = "HeaderLine",
+
+		Position = UDim2.new(0, 18, 1, -1),
+
+		Size = UDim2.new(1, -36, 0, 1),
+
+		BackgroundColor3 = COLORS.Blue,
+
+		BorderSizePixel = 0,
+
+		ZIndex = 12,
+	},
+	Header
+)
+
+local Title = New(
+	"TextLabel",
+	{
+		Name = "Title",
+
+		Position = UDim2.new(0, 22, 0, 12),
+
+		Size = UDim2.new(0, 400, 0, 30),
+
+		BackgroundTransparency = 1,
+
+		Text = "⚡ KYZEN PERKS",
+
+		TextColor3 = COLORS.White,
+
+		TextSize = 24,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 12,
+	},
+	Header
+)
+
+local Subtitle = New(
+	"TextLabel",
+	{
+		Name = "Subtitle",
+
+		Position = UDim2.new(0, 23, 0, 40),
+
+		Size = UDim2.new(0, 400, 0, 18),
+
+		BackgroundTransparency = 1,
+
+		Text = "PRIVATE DEVELOPER TEST SYSTEM",
+
+		TextColor3 = COLORS.Gray,
+
+		TextSize = 10,
+
+		Font = Enum.Font.GothamMedium,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 12,
+	},
+	Header
+)
+
+local VersionLabel = New(
+	"TextLabel",
+	{
+		Name = "Version",
+
+		AnchorPoint = Vector2.new(1, 0.5),
+
+		Position = UDim2.new(1, -65, 0.5, 0),
+
+		Size = UDim2.fromOffset(80, 24),
+
+		BackgroundTransparency = 1,
+
+		Text = VERSION,
+
+		TextColor3 = COLORS.BlueLight,
+
+		TextSize = 11,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Right,
+
+		ZIndex = 12,
+	},
+	Header
+)
+
+--========================================================
+-- CLOSE BUTTON
+--========================================================
+
+local CloseButton = New(
+	"TextButton",
+	{
+		Name = "Close",
+
+		AnchorPoint = Vector2.new(1, 0.5),
+
+		Position = UDim2.new(1, -18, 0.5, 0),
+
+		Size = UDim2.fromOffset(34, 34),
+
+		BackgroundColor3 = COLORS.Red,
+
+		Text = "×",
+
+		TextColor3 = COLORS.White,
+
+		TextSize = 22,
+
+		Font = Enum.Font.GothamBold,
+
+		AutoButtonColor = false,
+
+		ZIndex = 13,
+	},
+	Header
+)
+
+AddCorner(CloseButton, 9)
+
+AddStroke(
+	CloseButton,
+	COLORS.RedLight,
+	1,
+	0
+)
+
+CloseButton.MouseEnter:Connect(function()
+
+	Tween(
+		CloseButton,
+		0.15,
+		{
+			BackgroundColor3 = COLORS.RedLight,
+		}
+	)
+
+end)
+
+CloseButton.MouseLeave:Connect(function()
+
+	Tween(
+		CloseButton,
+		0.15,
+		{
+			BackgroundColor3 = COLORS.Red,
+		}
+	)
+
+end)
+
+--========================================================
+-- TABS
+--========================================================
+
+local TabsPanel = New(
+	"Frame",
+	{
+		Name = "TabsPanel",
+
+		Position = UDim2.new(0, 16, 0, 84),
+
+		Size = UDim2.new(0, 180, 1, -100),
+
+		BackgroundColor3 = COLORS.Panel,
+
+		ZIndex = 11,
+	},
+	MainFrame
+)
+
+AddCorner(TabsPanel, 12)
+
+AddStroke(
+	TabsPanel,
+	COLORS.Stroke,
+	1,
+	0.15
+)
+
+local TabTitle = New(
+	"TextLabel",
+	{
+		Name = "TabTitle",
+
+		Position = UDim2.new(0, 14, 0, 14),
+
+		Size = UDim2.new(1, -28, 0, 22),
+
+		BackgroundTransparency = 1,
+
+		Text = "MENU",
+
+		TextColor3 = COLORS.Gray,
+
+		TextSize = 10,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 12,
+	},
+	TabsPanel
+)
+
+local TabsContainer = New(
+	"Frame",
+	{
+		Name = "TabsContainer",
+
+		Position = UDim2.new(0, 10, 0, 45),
+
+		Size = UDim2.new(1, -20, 1, -55),
+
+		BackgroundTransparency = 1,
+
+		ZIndex = 12,
+	},
+	TabsPanel
+)
+
+local TabLayout = New(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0, 8),
+
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	TabsContainer
+)
+
+--========================================================
+-- CONTENT
+--========================================================
+
+local Content = New(
+	"Frame",
+	{
+		Name = "Content",
+
+		Position = UDim2.new(0, 210, 0, 84),
+
+		Size = UDim2.new(1, -226, 1, -100),
+
+		BackgroundColor3 = COLORS.Panel,
+
+		ZIndex = 11,
+	},
+	MainFrame
+)
+
+AddCorner(Content, 12)
+
+AddStroke(
+	Content,
+	COLORS.Stroke,
+	1,
+	0.15
+)
+
+--========================================================
+-- PAGE SYSTEM
+--========================================================
+
+local Pages = {}
+local TabButtons = {}
+
+local CurrentPage = nil
+
+local function CreatePage(name)
+
+	local page = New(
+		"ScrollingFrame",
+		{
+			Name = name,
+
+			Size = UDim2.fromScale(1, 1),
+
+			BackgroundTransparency = 1,
+
+			BorderSizePixel = 0,
+
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+
+			ScrollBarThickness = 3,
+
+			ScrollBarImageColor3 = COLORS.Blue,
+
+			Visible = false,
+
+			ZIndex = 12,
+		},
+		Content
+	)
+
+	Pages[name] = page
+
+	return page
+end
+
+local function CreatePageHeader(parent, title, subtitle)
+
+	local heading = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 20, 0, 18),
+
+			Size = UDim2.new(1, -40, 0, 30),
+
+			BackgroundTransparency = 1,
+
+			Text = title,
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 20,
+
+			Font = Enum.Font.GothamBold,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 13,
+		},
+		parent
+	)
+
+	local sub = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 20, 0, 48),
+
+			Size = UDim2.new(1, -40, 0, 25),
+
+			BackgroundTransparency = 1,
+
+			Text = subtitle,
+
+			TextColor3 = COLORS.Gray,
+
+			TextSize = 11,
+
+			Font = Enum.Font.GothamMedium,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 13,
+		},
+		parent
+	)
+
+	return heading, sub
+end
+
+--========================================================
+-- TOGGLE HELPER
+--========================================================
+
+local function CreateToggle(parent, text, description, default, callback)
+
+	local container = New(
+		"Frame",
+		{
+			Position = UDim2.new(0, 18, 0, 0),
+
+			Size = UDim2.new(1, -36, 0, 70),
+
+			BackgroundColor3 = COLORS.Panel2,
+
+			ZIndex = 13,
+		},
+		parent
+	)
+
+	AddCorner(container, 10)
+
+	AddStroke(
+		container,
+		COLORS.Stroke,
+		1,
+		0.25
+	)
+
+	local title = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 14, 0, 10),
+
+			Size = UDim2.new(1, -100, 0, 22),
+
+			BackgroundTransparency = 1,
+
+			Text = text,
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 13,
+
+			Font = Enum.Font.GothamBold,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	local desc = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 14, 0, 34),
+
+			Size = UDim2.new(1, -100, 0, 20),
+
+			BackgroundTransparency = 1,
+
+			Text = description,
+
+			TextColor3 = COLORS.Gray,
+
+			TextSize = 9,
+
+			Font = Enum.Font.GothamMedium,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	local button = New(
+		"TextButton",
+		{
+			AnchorPoint = Vector2.new(1, 0.5),
+
+			Position = UDim2.new(1, -14, 0.5, 0),
+
+			Size = UDim2.fromOffset(54, 28),
+
+			BackgroundColor3 = COLORS.DarkGray,
+
+			Text = "",
+
+			AutoButtonColor = false,
+
+			ZIndex = 15,
+		},
+		container
+	)
+
+	AddCorner(button, 14)
+
+	local circle = New(
+		"Frame",
+		{
+			AnchorPoint = Vector2.new(0, 0.5),
+
+			Position = UDim2.new(0, 3, 0.5, 0),
+
+			Size = UDim2.fromOffset(22, 22),
+
+			BackgroundColor3 = COLORS.White,
+
+			ZIndex = 16,
+		},
+		button
+	)
+
+	AddCorner(circle, 999)
+
+	local enabled = default == true
+
+	local function Refresh()
+
+		if enabled then
+
+			Tween(
+				button,
+				0.18,
+				{
+					BackgroundColor3 = COLORS.Blue,
+				}
+			)
+
+			Tween(
+				circle,
+				0.18,
+				{
+					Position = UDim2.new(1, -25, 0.5, 0),
+				}
+			)
+
+		else
+
+			Tween(
+				button,
+				0.18,
+				{
+					BackgroundColor3 = COLORS.DarkGray,
+				}
+			)
+
+			Tween(
+				circle,
+				0.18,
+				{
+					Position = UDim2.new(0, 3, 0.5, 0),
+				}
+			)
+
+		end
+
+	end
+
+	button.Activated:Connect(function()
+
+		enabled = not enabled
+
+		callback(enabled)
+
+		Refresh()
+
+	end)
+
+	Refresh()
+
+	return container
+end
+
+--========================================================
+-- NUMBER CONTROL
+--========================================================
+
+local function CreateNumberControl(parent, text, description, value, minimum, maximum, step, callback)
+
+	local container = New(
+		"Frame",
+		{
+			Position = UDim2.new(0, 18, 0, 0),
+
+			Size = UDim2.new(1, -36, 0, 72),
+
+			BackgroundColor3 = COLORS.Panel2,
+
+			ZIndex = 13,
+		},
+		parent
+	)
+
+	AddCorner(container, 10)
+
+	AddStroke(
+		container,
+		COLORS.Stroke,
+		1,
+		0.25
+	)
+
+	local title = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 14, 0, 10),
+
+			Size = UDim2.new(1, -170, 0, 22),
+
+			BackgroundTransparency = 1,
+
+			Text = text,
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 13,
+
+			Font = Enum.Font.GothamBold,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	local desc = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 14, 0, 34),
+
+			Size = UDim2.new(1, -170, 0, 18),
+
+			BackgroundTransparency = 1,
+
+			Text = description,
+
+			TextColor3 = COLORS.Gray,
+
+			TextSize = 9,
+
+			Font = Enum.Font.GothamMedium,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	local minus = New(
+		"TextButton",
+		{
+			AnchorPoint = Vector2.new(1, 0.5),
+
+			Position = UDim2.new(1, -95, 0.5, 0),
+
+			Size = UDim2.fromOffset(28, 28),
+
+			BackgroundColor3 = COLORS.Panel,
+
+			Text = "−",
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 18,
+
+			Font = Enum.Font.GothamBold,
+
+			AutoButtonColor = false,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	AddCorner(minus, 8)
+	AddStroke(minus, COLORS.Stroke, 1, 0)
+
+	local display = New(
+		"TextLabel",
+		{
+			AnchorPoint = Vector2.new(1, 0.5),
+
+			Position = UDim2.new(1, -48, 0.5, 0),
+
+			Size = UDim2.fromOffset(45, 28),
+
+			BackgroundColor3 = COLORS.Blue,
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 11,
+
+			Font = Enum.Font.GothamBold,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	AddCorner(display, 8)
+
+	local plus = New(
+		"TextButton",
+		{
+			AnchorPoint = Vector2.new(1, 0.5),
+
+			Position = UDim2.new(1, -12, 0.5, 0),
+
+			Size = UDim2.fromOffset(28, 28),
+
+			BackgroundColor3 = COLORS.Panel,
+
+			Text = "+",
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 18,
+
+			Font = Enum.Font.GothamBold,
+
+			AutoButtonColor = false,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	AddCorner(plus, 8)
+	AddStroke(plus, COLORS.Stroke, 1, 0)
+
+	local current = value
+
+	local function Refresh()
+
+		display.Text = tostring(current)
+
+	end
+
+	local function Change(amount)
+
+		current = math.clamp(
+			current + amount,
+			minimum,
+			maximum
+		)
+
+		callback(current)
+
+		Refresh()
+
+	end
+
+	minus.Activated:Connect(function()
+		Change(-step)
+	end)
+
+	plus.Activated:Connect(function()
+		Change(step)
+	end)
+
+	Refresh()
+
+	return container
+end
+
+--========================================================
+-- MODE SELECTOR
+--========================================================
+
+local function CreateModeSelector(parent, callback)
+
+	local container = New(
+		"Frame",
+		{
+			Position = UDim2.new(0, 18, 0, 0),
+
+			Size = UDim2.new(1, -36, 0, 82),
+
+			BackgroundColor3 = COLORS.Panel2,
+
+			ZIndex = 13,
+		},
+		parent
+	)
+
+	AddCorner(container, 10)
+
+	AddStroke(
+		container,
+		COLORS.Stroke,
+		1,
+		0.25
+	)
+
+	local title = New(
+		"TextLabel",
+		{
+			Position = UDim2.new(0, 14, 0, 10),
+
+			Size = UDim2.new(1, -28, 0, 20),
+
+			BackgroundTransparency = 1,
+
+			Text = "TARGET MODE",
+
+			TextColor3 = COLORS.White,
+
+			TextSize = 12,
+
+			Font = Enum.Font.GothamBold,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			ZIndex = 14,
+		},
+		container
+	)
+
+	local modes = {
+		"SMART",
+		"NEAREST",
+		"LOCK",
+	}
+
+	for index, mode in ipairs(modes) do
+
+		local button = New(
+			"TextButton",
+			{
+				Position = UDim2.new(
+					0,
+					12 + ((index - 1) * 92),
+					0,
+					40
+				),
+
+				Size = UDim2.fromOffset(84, 28),
+
+				BackgroundColor3 =
+					mode == Settings.TargetMode
+					and COLORS.Blue
+					or COLORS.Panel,
+
+				Text = mode,
+
+				TextColor3 = COLORS.White,
+
+				TextSize = 9,
+
+				Font = Enum.Font.GothamBold,
+
+				AutoButtonColor = false,
+
+				ZIndex = 14,
+			},
+			container
+		)
+
+		AddCorner(button, 7)
+
+		AddStroke(
+			button,
+			mode == Settings.TargetMode
+				and COLORS.BlueLight
+				or COLORS.Stroke,
+			1,
+			0
+		)
+
+		button.Activated:Connect(function()
+
+			Settings.TargetMode = mode
+
+			callback(mode)
+
+			for _, other in ipairs(container:GetChildren()) do
+
+				if other:IsA("TextButton") then
+
+					local selected =
+						other.Text == Settings.TargetMode
+
+					Tween(
+						other,
+						0.15,
+						{
+							BackgroundColor3 =
+								selected
+								and COLORS.Blue
+								or COLORS.Panel
+						}
+					)
+
+					local stroke =
+						other:FindFirstChildOfClass("UIStroke")
+
+					if stroke then
+
+						stroke.Color =
+							selected
+							and COLORS.BlueLight
+							or COLORS.Stroke
+
+					end
+
+				end
+
+			end
+
+		end)
+
+	end
+
+	return container
+end
+
+--========================================================
+-- AIM PAGE
+--========================================================
+
+local AimPage = CreatePage("AimTarget")
+
+CreatePageHeader(
+	AimPage,
+	"AIM & TARGET",
+	"Precision target testing and controlled shooting."
+)
+
+local AimLayout = New(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0, 10),
+
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	AimPage
+)
+
+AimLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+
+	AimPage.CanvasSize =
+		UDim2.new(
+			0,
+			0,
+			0,
+			AimLayout.AbsoluteContentSize.Y + 20
+		)
+
+end)
+
+New(
+	"Frame",
+	{
+		Size = UDim2.new(1, 0, 0, 78),
+
+		BackgroundTransparency = 1,
+
+		LayoutOrder = 1,
+	},
+	AimPage
+)
+
+CreateToggle(
+	AimPage,
+	"TARGET LOCK",
+	"Locks the camera target while a valid target is available.",
+	Settings.TargetLock,
+	function(value)
+
+		Settings.TargetLock = value
+
+		if not value then
+
+			-- keep selected target if Aim Assist is active
+
+		end
+
+	end
+).LayoutOrder = 2
+
+CreateToggle(
+	AimPage,
+	"AIM ASSIST",
+	"Smoothly moves the camera toward the selected target.",
+	Settings.AimAssist,
+	function(value)
+
+		Settings.AimAssist = value
+
+	end
+).LayoutOrder = 3
+
+CreateToggle(
+	AimPage,
+	"AUTO SHOOT",
+	"Automatically activates your game's Attack button while a valid target is selected.",
+	Settings.AutoShoot,
+	function(value)
+
+		Settings.AutoShoot = value
+
+	end
+).LayoutOrder = 4
+
+CreateNumberControl(
+	AimPage,
+	"AIM SMOOTHNESS",
+	"Controls camera interpolation speed.",
+	Settings.AimSmoothness,
+	0.05,
+	1,
+	0.05,
+	function(value)
+
+		Settings.AimSmoothness = value
+
+	end
+).LayoutOrder = 5
+
+local AimInfo = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 18, 0, 0),
+
+		Size = UDim2.new(1, -36, 0, 70),
+
+		BackgroundColor3 = COLORS.Panel2,
+
+		Text =
+			"TARGET SYSTEM\n\n"
+			.. "Auto Shoot uses the game's native Attack GUI button.\n"
+			.. "Path: PlayerGui > MobileButtons > Buttons > Attack",
+
+		TextColor3 = COLORS.Gray,
+
+		TextSize = 10,
+
+		Font = Enum.Font.GothamMedium,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		TextYAlignment = Enum.TextYAlignment.Center,
+
+		LayoutOrder = 6,
+
+		ZIndex = 13,
+	},
+	AimPage
+)
+
+AddCorner(AimInfo, 10)
+
+AddStroke(
+	AimInfo,
+	COLORS.Blue,
+	1,
+	0.25
+)
+
+--========================================================
+-- SETTINGS PAGE
+--========================================================
+
+local SettingsPage = CreatePage("Settings")
+
+CreatePageHeader(
+	SettingsPage,
+	"SETTINGS",
+	"Detection range, FOV and target selection."
+)
+
+local SettingsLayout = New(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0, 10),
+
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	SettingsPage
+)
+
+New(
+	"Frame",
+	{
+		Size = UDim2.new(1, 0, 0, 78),
+
+		BackgroundTransparency = 1,
+
+		LayoutOrder = 1,
+	},
+	SettingsPage
+)
+
+CreateToggle(
+	SettingsPage,
+	"FOV DETECTION",
+	"Only prioritize targets inside the detection circle.",
+	Settings.ShowFOV,
+	function(value)
+
+		Settings.ShowFOV = value
+
+		FOVCircle.Visible = value
+
+	end
+).LayoutOrder = 2
+
+CreateNumberControl(
+	SettingsPage,
+	"FOV SIZE",
+	"Detection circle radius.",
+	Settings.FOVRadius,
+	50,
+	500,
+	10,
+	function(value)
+
+		Settings.FOVRadius = value
+
+		FOVCircle.Size =
+			UDim2.fromOffset(
+				value * 2,
+				value * 2
+			)
+
+	end
+).LayoutOrder = 3
+
+CreateModeSelector(
+	SettingsPage,
+	function(mode)
+
+		Settings.TargetMode = mode
+
+	end
+).LayoutOrder = 4
+
+CreateNumberControl(
+	SettingsPage,
+	"TARGET RANGE",
+	"Maximum distance used when searching targets.",
+	Settings.TargetRange,
+	25,
+	1000,
+	25,
+	function(value)
+
+		Settings.TargetRange = value
+
+	end
+).LayoutOrder = 5
+
+CreateNumberControl(
+	SettingsPage,
+	"AUTO SHOOT DELAY",
+	"Delay between native Attack button activations.",
+	Settings.AutoShootCooldown,
+	0.05,
+	1,
+	0.05,
+	function(value)
+
+		Settings.AutoShootCooldown = value
+
+	end
+).LayoutOrder = 6
+
+CreateToggle(
+	SettingsPage,
+	"TARGET HIGHLIGHT",
+	"Shows a red highlight around the current target.",
+	Settings.TargetHighlight,
+	function(value)
+
+		Settings.TargetHighlight = value
+
+	end
+).LayoutOrder = 7
+
+CreateToggle(
+	SettingsPage,
+	"TARGET BILLBOARD",
+	"Shows the current target name above the character.",
+	Settings.TargetBillboard,
+	function(value)
+
+		Settings.TargetBillboard = value
+
+	end
+).LayoutOrder = 8
+
+local SettingsInfo = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 18, 0, 0),
+
+		Size = UDim2.new(1, -36, 0, 62),
+
+		BackgroundColor3 = COLORS.Panel2,
+
+		Text =
+			"SAFE TESTING MODE\n\n"
+			.. "Target selection is limited to live characters within range.",
+
+		TextColor3 = COLORS.Gray,
+
+		TextSize = 10,
+
+		Font = Enum.Font.GothamMedium,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		TextYAlignment = Enum.TextYAlignment.Center,
+
+		LayoutOrder = 9,
+
+		ZIndex = 13,
+	},
+	SettingsPage
+)
+
+AddCorner(SettingsInfo, 10)
+
+AddStroke(
+	SettingsInfo,
+	COLORS.Red,
+	1,
+	0.25
+)
+
+--========================================================
+-- INFO PAGE
+--========================================================
+
+local InfoPage = CreatePage("InfoCredit")
+
+CreatePageHeader(
+	InfoPage,
+	"INFO & CREDIT",
+	"Kyzen Perks developer information."
+)
+
+local InfoLayout = New(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0, 10),
+
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	InfoPage
+)
+
+New(
+	"Frame",
+	{
+		Size = UDim2.new(1, 0, 0, 78),
+
+		BackgroundTransparency = 1,
+
+		LayoutOrder = 1,
+	},
+	InfoPage
+)
+
+local DeveloperCard = New(
+	"Frame",
+	{
+		Position = UDim2.new(0, 18, 0, 0),
+
+		Size = UDim2.new(1, -36, 0, 78),
+
+		BackgroundColor3 = COLORS.Panel2,
+
+		LayoutOrder = 2,
+
+		ZIndex = 13,
+	},
+	InfoPage
+)
+
+AddCorner(DeveloperCard, 10)
+
+AddStroke(
+	DeveloperCard,
+	COLORS.Blue,
+	1,
+	0.15
+)
+
+local DeveloperName = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 16, 0, 12),
+
+		Size = UDim2.new(1, -32, 0, 25),
+
+		BackgroundTransparency = 1,
+
+		Text = "KyzenDevs",
+
+		TextColor3 = COLORS.White,
+
+		TextSize = 17,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 14,
+	},
+	DeveloperCard
+)
+
+local DeveloperRole = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 16, 0, 40),
+
+		Size = UDim2.new(1, -32, 0, 20),
+
+		BackgroundTransparency = 1,
+
+		Text = "DEVELOPER • PRIVATE TEST SYSTEM",
+
+		TextColor3 = COLORS.BlueLight,
+
+		TextSize = 9,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 14,
+	},
+	DeveloperCard
+)
+
+local GameInfoBox = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 18, 0, 0),
+
+		Size = UDim2.new(1, -36, 0, 390),
+
+		BackgroundColor3 = COLORS.Panel2,
+
+		Text =
+[[
+==================================================
+              ⚡ KYZEN PERKS INFO ⚡
+          [ Powerful Targetlockplayer System ]
+==================================================
+
+⚙️ DEVELOPER : KyzenDevs
+🎮 TARGET GAME: One Tap
+
+📌 OVERVIEW:
+Kyzen Perks is a high-performance script built for
+precision target locking and aim evaluation. Engineered
+with safety protocols to ensure smooth test runs.
+
+✨ FEATURES:
+• Smooth Aimbot / Target Lock System
+• Advanced Safety Protections
+• 100% Manual Shooting Control (No Auto-Shoot)
+
+⚠️ TEST NOTICE:
+Enjoy testing, but please use responsibly! Avoid
+excessive abuse to help keep test logs clean.
+
+🔔 UPCOMING UPDATES:
+Join our Discord server to get notified about future
+KyzenPerks releases and patches!
+👉 [Insert Discord Link Here]
+==================================================
+]],
+
+		TextColor3 = COLORS.Gray,
+
+		TextSize = 10,
+
+		Font = Enum.Font.Code,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		TextYAlignment = Enum.TextYAlignment.Top,
+
+		LayoutOrder = 3,
+
+		ZIndex = 13,
+	},
+	InfoPage
+)
+
+AddCorner(GameInfoBox, 10)
+
+AddStroke(
+	GameInfoBox,
+	COLORS.Blue,
+	1,
+	0.25
+)
+
+local InfoPadding = New(
+	"UIPadding",
+	{
+		PaddingTop = UDim.new(0, 14),
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+	},
+	GameInfoBox
+)
+
+--========================================================
+-- DISCORD PAGE
+--========================================================
+
+local DiscordPage = CreatePage("Discord")
+
+CreatePageHeader(
+	DiscordPage,
+	"DISCORD",
+	"Community and update information."
+)
+
+local DiscordLayout = New(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0, 10),
+
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	DiscordPage
+)
+
+New(
+	"Frame",
+	{
+		Size = UDim2.new(1, 0, 0, 78),
+
+		BackgroundTransparency = 1,
+
+		LayoutOrder = 1,
+	},
+	DiscordPage
+)
+
+local DiscordCard = New(
+	"Frame",
+	{
+		Position = UDim2.new(0, 18, 0, 0),
+
+		Size = UDim2.new(1, -36, 0, 160),
+
+		BackgroundColor3 = COLORS.Panel2,
+
+		LayoutOrder = 2,
+
+		ZIndex = 13,
+	},
+	DiscordPage
+)
+
+AddCorner(DiscordCard, 10)
+
+AddStroke(
+	DiscordCard,
+	COLORS.Red,
+	1,
+	0.2
+)
+
+local DiscordTitle = New(
+	"TextLabel",
+	{
+		Position = UDim2.new(0, 16, 0, 14),
+
+		Size = UDim2.new(1, -32, 0, 25),
+
+		BackgroundTransparency = 1,
+
+		Text = "KYZEN COMMUNITY",
+
+		TextColor3 = COLORS.White,
+
+		TextSize = 15,
+
+		Font = Enum.Font.GothamBold,
+
+		TextXAlignment = Enum.TextXAlignment.Left,
+
+		ZIndex = 14,
+	},
+	DiscordCard
+)
+
+local DiscordBox = New(
+	"TextBox",
+	{
+		Position = UDim2.new(0, 16, 0, 50),
+
+		Size = UDim2.new(1, -32, 0, 40),
+
+		BackgroundColor3 = COLORS.Panel,
+
+		Text = DISCORD_INVITE,
+
+		PlaceholderText = "Discord invite...",
+
+		TextColor3 = COLORS.White,
+
+		PlaceholderColor3 = COLORS.Gray,
+
+		TextSize = 11,
+
+		Font = Enum.Font.GothamMedium,
+
+		ClearTextOnFocus = false,
+
+		ZIndex = 14,
+	},
+	DiscordCard
+)
+
+AddCorner(DiscordBox, 8)
+
+AddStroke(
+	DiscordBox,
+	COLORS.Stroke,
+	1,
+	0
+)
+
+local CopyButton = New(
+	"TextButton",
+	{
+		Position = UDim2.new(0, 16, 0, 100),
+
+		Size = UDim2.fromOffset(110, 34),
+
+		BackgroundColor3 = COLORS.Blue,
+
+		Text = "COPY",
+
+		TextColor3 = COLORS.White,
+
+		TextSize = 10,
+
+		Font = Enum.Font.GothamBold,
+
+		AutoButtonColor = false,
+
+		ZIndex = 14,
+	},
+	DiscordCard
+)
+
+AddCorner(CopyButton, 8)
+
+AddStroke(
+	CopyButton,
+	COLORS.BlueLight,
+	1,
+	0
+)
+
+CopyButton.Activated:Connect(function()
+
+	local success = pcall(function()
+
+		if setclipboard then
+			setclipboard(DiscordBox.Text)
+		end
+
+	end)
+
+	if success then
+
+		CopyButton.Text = "COPIED"
+
+		Tween(
+			CopyButton,
+			0.15,
+			{
+				BackgroundColor3 = COLORS.Green,
+			}
+		)
+
+		task.delay(1.3, function()
+
+			if CopyButton.Parent then
+
+				CopyButton.Text = "COPY"
+
+				Tween(
+					CopyButton,
+					0.15,
+					{
+						BackgroundColor3 = COLORS.Blue,
+					}
+				)
+
+			end
+
+		end)
+
+	else
+
+		CopyButton.Text = "SELECT"
+
+		task.delay(1.2, function()
+
+			if CopyButton.Parent then
+				CopyButton.Text = "COPY"
+			end
+
+		end)
+
+	end
+
+end)
+
+--========================================================
+-- TAB CREATION
+--========================================================
+
+local function CreateTab(name, text, order)
+
+	local button = New(
+		"TextButton",
+		{
+			Name = name,
+
+			Size = UDim2.new(1, 0, 0, 42),
+
+			BackgroundColor3 = COLORS.Panel,
+
+			Text = text,
+
+			TextColor3 = COLORS.Gray,
+
+			TextSize = 10,
+
+			Font = Enum.Font.GothamBold,
+
+			TextXAlignment = Enum.TextXAlignment.Left,
+
+			AutoButtonColor = false,
+
+			LayoutOrder = order,
+
+			ZIndex = 13,
+		},
+		TabsContainer
+	)
+
+	AddCorner(button, 8)
+
+	local padding = New(
+		"UIPadding",
+		{
+			PaddingLeft = UDim.new(0, 14),
+		},
+		button
+	)
+
+	local line = New(
+		"Frame",
+		{
+			Position = UDim2.new(0, 0, 0.5, -10),
+
+			Size = UDim2.fromOffset(3, 20),
+
+			BackgroundColor3 = COLORS.Blue,
+
+			Visible = false,
+
+			ZIndex = 14,
+		},
+		button
+	)
+
+	AddCorner(line, 3)
+
+	TabButtons[name] = {
+		Button = button,
+		Line = line,
+	}
+
+	button.Activated:Connect(function()
+
+		if CurrentPage == name then
+			return
+		end
+
+		for pageName, page in pairs(Pages) do
+
+			page.Visible = pageName == name
+
+		end
+
+		for tabName, data in pairs(TabButtons) do
+
+			local active = tabName == name
+
+			Tween(
+				data.Button,
+				0.15,
+				{
+					BackgroundColor3 =
+						active
+						and Color3.fromRGB(24, 34, 52)
+						or COLORS.Panel,
+
+					TextColor3 =
+						active
+						and COLORS.White
+						or COLORS.Gray,
+				}
+			)
+
+			data.Line.Visible = active
+
+		end
+
+		CurrentPage = name
+
+	end)
+
+	return button
+end
+
+CreateTab("AimTarget", "AIM & TARGET", 1)
+CreateTab("Settings", "SETTINGS", 2)
+CreateTab("InfoCredit", "INFO & CREDIT", 3)
+CreateTab("Discord", "DISCORD", 4)
+
+--========================================================
+-- OPEN PAGE
+--========================================================
+
+local function OpenPage()
+
+	if MainFrame.Visible then
+		return
+	end
+
+	MainFrame.Visible = true
+
+	MainFrame.Size = UDim2.fromOffset(760, 490)
+
+	Tween(
+		MainFrame,
+		0.3,
+		{
+			Size = UDim2.fromOffset(820, 530),
+		}
+	)
+
+	local first = TabButtons["AimTarget"]
+
+	if first then
+
+		for pageName, page in pairs(Pages) do
+			page.Visible = pageName == "AimTarget"
+		end
+
+		for tabName, data in pairs(TabButtons) do
+
+			local active = tabName == "AimTarget"
+
+			data.Button.BackgroundColor3 =
+				active
+				and Color3.fromRGB(24, 34, 52)
+				or COLORS.Panel
+
+			data.Button.TextColor3 =
+				active
+				and COLORS.White
+				or COLORS.Gray
+
+			data.Line.Visible = active
+
+		end
+
+		CurrentPage = "AimTarget"
+
+	end
+
+end
+
+local function ClosePage()
+
+	Tween(
+		MainFrame,
+		0.2,
+		{
+			Size = UDim2.fromOffset(760, 490),
+		}
+	)
+
+	task.delay(0.2, function()
+
+		if not MainFrame.Parent then
+			return
+		end
+
+		MainFrame.Visible = false
+
+	end)
+
+end
+
+DevButton.Activated:Connect(function()
+
+	if MainFrame.Visible then
+		ClosePage()
+	else
+		OpenPage()
+	end
+
+end)
+
+CloseButton.Activated:Connect(function()
+
+	ClosePage()
+
+end)
+
+--========================================================
+-- DRAGGING
+--========================================================
+
+local dragging = false
+local dragStart
+local startPosition
+
+Header.InputBegan:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = true
+
+		dragStart = input.Position
+
+		startPosition = MainFrame.Position
+
+	end
+
+end)
+
+Header.InputEnded:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = false
+
+	end
+
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if not dragging then
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	local delta = input.Position - dragStart
+
+	MainFrame.Position =
+		UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+
+end)
+
+--========================================================
+-- TARGET SYSTEM
+--========================================================
+
+local CurrentTarget = nil
+local LockedTarget = nil
+
+local TargetHighlightObject = nil
+local TargetBillboardObject = nil
+
+local function IsValidTarget(player)
+
+	if not player then
+		return false
+	end
+
+	if player == LocalPlayer then
+		return false
+	end
+
+	local character = player.Character
+
+	if not character then
+		return false
+	end
+
+	if not IsAlive(character) then
+		return false
+	end
+
+	local root = GetCharacterRoot(character)
+
+	if not root then
+		return false
+	end
+
+	local localCharacter = LocalPlayer.Character
+
+	local localRoot = GetCharacterRoot(localCharacter)
+
+	if not localRoot then
+		return false
+	end
+
+	local distance =
+		(localRoot.Position - root.Position).Magnitude
+
+	if distance > Settings.TargetRange then
+		return false
+	end
+
+	return true
+end
+
+local function IsInsideFOV(part)
+
+	if not part then
+		return false
+	end
+
+	if not Settings.ShowFOV then
+		return true
+	end
+
+	local screenPosition, onScreen =
+		Camera:WorldToViewportPoint(part.Position)
+
+	if not onScreen then
+		return false
+	end
+
+	local center =
+		Vector2.new(
+			Camera.ViewportSize.X / 2,
+			Camera.ViewportSize.Y / 2
+		)
+
+	local position =
+		Vector2.new(
+			screenPosition.X,
+			screenPosition.Y
+		)
+
+	return (position - center).Magnitude <= Settings.FOVRadius
+end
+
+local function GetCandidates()
+
+	local candidates = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		if IsValidTarget(player) then
+
+			local character = player.Character
+			local part = GetTargetPart(character)
+
+			if part and IsInsideFOV(part) then
+
+				table.insert(candidates, player)
+
+			end
+
+		end
+
+	end
+
+	return candidates
+end
+
+local function FindNearest()
+
+	local candidates = GetCandidates()
+
+	local localCharacter = LocalPlayer.Character
+	local localRoot = GetCharacterRoot(localCharacter)
+
+	if not localRoot then
+		return nil
+	end
+
+	local nearest = nil
+	local nearestDistance = math.huge
+
+	for _, player in ipairs(candidates) do
+
+		local root =
+			GetCharacterRoot(player.Character)
+
+		if root then
+
+			local distance =
+				(localRoot.Position - root.Position).Magnitude
+
+			if distance < nearestDistance then
+
+				nearestDistance = distance
+				nearest = player
+
+			end
+
+		end
+
+	end
+
+	return nearest
+end
+
+local function FindSmart()
+
+	local candidates = GetCandidates()
+
+	local center =
+		Vector2.new(
+			Camera.ViewportSize.X / 2,
+			Camera.ViewportSize.Y / 2
+		)
+
+	local bestTarget = nil
+	local bestScore = math.huge
+
+	for _, player in ipairs(candidates) do
+
+		local part =
+			GetTargetPart(player.Character)
+
+		if part then
+
+			local screenPosition, onScreen =
+				Camera:WorldToViewportPoint(
+					part.Position
+				)
+
+			if onScreen then
+
+				local screenPoint =
+					Vector2.new(
+						screenPosition.X,
+						screenPosition.Y
+					)
+
+				local screenDistance =
+					(screenPoint - center).Magnitude
+
+				if screenDistance < bestScore then
+
+					bestScore = screenDistance
+					bestTarget = player
+
+				end
+
+			end
+
+		end
+
+	end
+
+	return bestTarget
+end
+
+local function FindLock()
+
+	if LockedTarget and IsValidTarget(LockedTarget) then
+
+		return LockedTarget
+
+	end
+
+	local target = FindSmart()
+
+	LockedTarget = target
+
+	return target
+end
+
+local function FindTarget()
+
+	if Settings.TargetMode == "NEAREST" then
+
+		return FindNearest()
+
+	elseif Settings.TargetMode == "LOCK" then
+
+		return FindLock()
+
+	else
+
+		return FindSmart()
+
+	end
+
+end
+
+--========================================================
+-- TARGET VISUALS
+--========================================================
+
+local function ClearTargetVisuals()
+
+	if TargetHighlightObject then
+
+		TargetHighlightObject:Destroy()
+		TargetHighlightObject = nil
+
+	end
+
+	if TargetBillboardObject then
+
+		TargetBillboardObject:Destroy()
+		TargetBillboardObject = nil
+
+	end
+
+end
+
+local function UpdateTargetVisuals()
+
+	ClearTargetVisuals()
+
+	if not CurrentTarget then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return
+	end
+
+	local character = CurrentTarget.Character
+
+	if not character then
+		return
+	end
+
+	if Settings.TargetHighlight then
+
+		local highlight = Instance.new("Highlight")
+
+		highlight.Name = "KyzenTargetHighlight"
+
+		highlight.Adornee = character
+
+		highlight.FillColor = COLORS.Red
+
+		highlight.FillTransparency = 0.78
+
+		highlight.OutlineColor = COLORS.RedLight
+
+		highlight.OutlineTransparency = 0
+
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
+		highlight.Parent = character
+
+		TargetHighlightObject = highlight
+
+	end
+
+	if Settings.TargetBillboard then
+
+		local head =
+			character:FindFirstChild("Head")
+
+		if head then
+
+			local billboard = Instance.new("BillboardGui")
+
+			billboard.Name = "KyzenTargetBillboard"
+
+			billboard.Adornee = head
+
+			billboard.Size =
+				UDim2.fromOffset(170, 35)
+
+			billboard.StudsOffset =
+				Vector3.new(0, 2.8, 0)
+
+			billboard.AlwaysOnTop = true
+
+			billboard.Parent = head
+
+			local label = New(
+				"TextLabel",
+				{
+					Size = UDim2.fromScale(1, 1),
+
+					BackgroundTransparency = 1,
+
+					Text =
+						"TARGET  •  "
+						.. CurrentTarget.DisplayName,
+
+					TextColor3 = COLORS.RedLight,
+
+					TextStrokeTransparency = 0.25,
+
+					TextStrokeColor3 =
+						Color3.new(0, 0, 0),
+
+					TextSize = 11,
+
+					Font = Enum.Font.GothamBold,
+
+					ZIndex = 20,
+				},
+				billboard
+			)
+
+			TargetBillboardObject = billboard
+
+		end
+
+	end
+
+end
+
+--========================================================
+-- TARGET UPDATE
+--========================================================
+
+local LastTarget = nil
+
+local function UpdateTarget()
+
+	local newTarget = FindTarget()
+
+	if newTarget ~= LastTarget then
+
+		LastTarget = newTarget
+
+		CurrentTarget = newTarget
+
+		UpdateTargetVisuals()
+
+	end
+
+	if CurrentTarget then
+
+		if not IsValidTarget(CurrentTarget) then
+
+			CurrentTarget = nil
+			LastTarget = nil
+			LockedTarget = nil
+
+			ClearTargetVisuals()
+
+		end
+
+	end
+
+end
+
+--========================================================
+-- CAMERA AIM
+--========================================================
+
+local function UpdateCamera()
+
+	if not Settings.TargetLock
+		and not Settings.AimAssist then
+		return
+	end
+
+	if not CurrentTarget then
+		return
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return
+	end
+
+	local part =
+		GetTargetPart(CurrentTarget.Character)
+
+	if not part then
+		return
+	end
+
+	local cameraPosition =
+		Camera.CFrame.Position
+
+	local desired =
+		CFrame.lookAt(
+			cameraPosition,
+			part.Position
+		)
+
+	local alpha =
+		math.clamp(
+			Settings.AimSmoothness
+			* Settings.CameraSpeed,
+			0.01,
+			1
+		)
+
+	Camera.CFrame =
+		Camera.CFrame:Lerp(
+			desired,
+			alpha
+		)
+
+end
+
+--========================================================
+-- ATTACK BUTTON
+--========================================================
+
+local function FindAttackButton()
+
+	local mobileButtons =
+		PlayerGui:FindFirstChild("MobileButtons")
+
+	if not mobileButtons then
+		return nil
+	end
+
+	local buttons =
+		mobileButtons:FindFirstChild("Buttons")
+
+	if not buttons then
+		return nil
+	end
+
+	local attack =
+		buttons:FindFirstChild("Attack")
+
+	if attack and attack:IsA("ImageButton") then
+
+		return attack
+
+	end
+
+	return nil
+end
+
+--========================================================
+-- AUTO SHOOT
+--========================================================
+
+local LastAutoShot = 0
+
+local function CanAutoShoot()
+
+	if not Settings.AutoShoot then
+		return false
+	end
+
+	if not CurrentTarget then
+		return false
+	end
+
+	if not IsValidTarget(CurrentTarget) then
+		return false
+	end
+
+	local attackButton =
+		FindAttackButton()
+
+	if not attackButton then
+		return false
+	end
+
+	if not attackButton.Visible then
+		return false
+	end
+
+	if not attackButton.Active then
+		return false
+	end
+
+	local now = os.clock()
+
+	if now - LastAutoShot
+		< Settings.AutoShootCooldown then
+
+		return false
+
+	end
+
+	return true
+end
+
+local function AutoShoot()
+
+	if not CanAutoShoot() then
+		return
+	end
+
+	local attackButton =
+		FindAttackButton()
+
+	if not attackButton then
+		return
+	end
+
+	LastAutoShot = os.clock()
+
+	-- Native Roblox GUI activation.
+	-- This triggers the button's normal Activated behavior.
+	pcall(function()
+
+		attackButton:Activate()
+
+	end)
+
+end
+
+--========================================================
+-- AUTO SHOOT LOOP
+--========================================================
+
+task.spawn(function()
+
+	while ScreenGui.Parent do
+
+		AutoShoot()
+
+		task.wait(0.025)
+
+	end
+
+end)
+
+--========================================================
+-- TARGET LOOP
+--========================================================
+
+task.spawn(function()
+
+	while ScreenGui.Parent do
+
+		UpdateTarget()
+
+		task.wait(0.05)
+
+	end
+
+end)
+
+--========================================================
+-- CAMERA LOOP
+--========================================================
+
+RunService:BindToRenderStep(
+	"KyzenPerksCamera",
+	Enum.RenderPriority.Camera.Value + 1,
+	function()
+
+		if not ScreenGui.Parent then
+			return
+		end
+
+		UpdateCamera()
+
+	end
+)
+
+--========================================================
+-- FOV LOOP
+--========================================================
+
+task.spawn(function()
+
+	while ScreenGui.Parent do
+
+		if Settings.ShowFOV then
+
+			FOVCircle.Visible = true
+
+			FOVCircle.Position =
+				UDim2.fromOffset(
+					Camera.ViewportSize.X / 2,
+					Camera.ViewportSize.Y / 2
+				)
+
+			FOVCircle.Size =
+				UDim2.fromOffset(
+					Settings.FOVRadius * 2,
+					Settings.FOVRadius * 2
+				)
+
+		else
+
+			FOVCircle.Visible = false
+
+		end
+
+		task.wait(0.05)
+
+	end
+
+end)
+
+--========================================================
+-- CHARACTER RESPAWN SAFETY
+--========================================================
+
+LocalPlayer.CharacterAdded:Connect(function()
+
+	CurrentTarget = nil
+	LockedTarget = nil
+	LastTarget = nil
+
+	ClearTargetVisuals()
+
+	task.wait(1)
+
+	UpdateScale()
+
+end)
+
+--========================================================
+-- PLAYER LEAVE SAFETY
+--========================================================
+
+Players.PlayerRemoving:Connect(function(player)
+
+	if player == CurrentTarget then
+
+		CurrentTarget = nil
+		LastTarget = nil
+		LockedTarget = nil
+
+		ClearTargetVisuals()
+
+	end
+
+end)
+
+--========================================================
+-- VISUAL SAFETY
+--========================================================
+
+task.spawn(function()
+
+	while ScreenGui.Parent do
+
+		if CurrentTarget then
+
+			if not IsValidTarget(CurrentTarget) then
+
+				CurrentTarget = nil
+				LastTarget = nil
+				LockedTarget = nil
+
+				ClearTargetVisuals()
+
+			end
+
+		end
+
+		task.wait(0.2)
+
+	end
+
+end)
+
+--========================================================
+-- INITIAL STATE
+--========================================================
+
+FOVCircle.Visible = Settings.ShowFOV
+
+FOVCircle.Size =
+	UDim2.fromOffset(
+		Settings.FOVRadius * 2,
+		Settings.FOVRadius * 2
+	)
+
+--========================================================
+-- OPEN ANIMATION
+--========================================================
+
+task.delay(0.25, function()
+
+	OpenPage()
+
+end)
+
+--========================================================
+-- END
+--========================================================
